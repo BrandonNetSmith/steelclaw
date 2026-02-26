@@ -21,8 +21,22 @@ services:
     networks:
       - openclaw-net
 
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: steelclaw-signal
+    restart: unless-stopped
+    environment:
+      - MODE=native
+    volumes:
+      - signal-cli-data:/home/.local/share/signal-cli
+    ports:
+      - "127.0.0.1:8181:8080"
+    networks:
+      - openclaw-net
+
 volumes:
   openclaw-runtime:
+  signal-cli-data:
 
 networks:
   openclaw-net:
