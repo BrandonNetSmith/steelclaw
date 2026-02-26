@@ -1,0 +1,28 @@
+services:
+  openclaw:
+    image: node:22-alpine
+    container_name: steelclaw-openclaw
+    restart: unless-stopped
+    working_dir: /root/.openclaw
+    volumes:
+      - ./config/openclaw.json:/root/.openclaw/openclaw.json:ro
+      - ./workspace:/root/.openclaw/workspace
+      - openclaw-runtime:/root/.openclaw/.runtime
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_OWNER_ID=${DISCORD_OWNER_ID}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      - SIGNAL_PHONE_NUMBER=${SIGNAL_PHONE_NUMBER}
+    command: sh -c "npm install -g openclaw@latest 2>/dev/null; openclaw"
+    ports:
+      - "3000:3000"
+    networks:
+      - openclaw-net
+
+volumes:
+  openclaw-runtime:
+
+networks:
+  openclaw-net:
