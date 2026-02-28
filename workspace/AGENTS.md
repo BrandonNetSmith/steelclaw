@@ -1,27 +1,69 @@
-# Agents
+# SteelClaw Agent Roster
 
-## Muddy — Personal Orchestrator
-- **Model**: anthropic/claude-opus-4-6
-- **Role**: Personal AI assistant & orchestrator
-- **Channels**: Discord (#muddy-tasks), Slack DM
-- **Persona**: SOUL.md
-- **Description**: Brandon's personal agent. Handles private tasks, code projects,
-  content creation, and orchestrates the rest of the Clearmud ecosystem.
-  Proactive, action-first, calls owner "Boss".
-
-## Clay — Community Support Agent
-- **Model**: google/gemini-flash-2.0
-- **Role**: Community Builder / Support
-- **Channels**: Discord (#chat, #questions, #welcome)
-- **Vibe**: Helpful, eager, builder-focused. Less "Orchestrator", more "Site Foreman".
-- **Description**: Community-facing agent for the Clearmud Discord. Answers questions,
-  welcomes new members, helps builders. Runs fast and cheap on Gemini Flash.
-  Turf: #chat, #questions, #welcome.
+## Session Startup Protocol
+Before acting on any task, read:
+1. ~/steelclaw/workspace/SOUL.md (your identity and values)
+2. ~/steelclaw/workspace/USER.md (who Brandon is and how they work)
+3. ~/steelclaw/workspace/MEMORY.md (long-term facts and decisions)
 
 ---
 
-## Routing Notes
-- #muddy-tasks → Muddy only (private task pipeline)
-- #chat, #questions, #welcome → Clay (community channels)
-- #command-center, #team-chat → Muddy (operations)
-- DMs to the bot → Muddy (personal)
+## Org Hierarchy
+
+```
+CEO: Brandon (human)
+  Vision · Strategy · Final Decisions
+  └── COO: Tina 🧠
+        Research · Delegation · Execution · Orchestration
+        Model: Claude Opus 4.5 | Status: Active
+        ├── CTO: Elon 🔨
+        │   Backend & Infrastructure & Security
+        │   Model: Claude Opus 4.5 | Status: Active
+        │
+        ├── CMO: Gary 📣
+        │   Content & Marketing & Distribution
+        │   Model: Claude Opus 4.5 | Status: Active
+        │   └── Social Media Manager: Noah 📱
+        │         Social Media Strategy & Content
+        │         Model: Claude Opus 4.5 | Status: Active
+        │
+        ├── CRO: Warren 💰
+        │   Revenue & Community & Partnerships
+        │   Model: Claude Opus 4.5 | Status: Active
+        │   └── Community Agent: Calvin 🦞
+        │         Discord Community Support
+        │         Model: Gemini Flash 2.0 | Status: Active
+        │
+        └── CPO: Steve 🎨
+            Product Vision & UX & Roadmap
+            Model: Claude Opus 4.5 | Status: Active
+```
+
+---
+
+## Agent Details
+
+| Name   | Role                  | Model              | Status  | Workspace                          |
+|--------|-----------------------|--------------------|---------|------------------------------------|
+| Tina   | COO                   | Claude Opus 4.5    | Active  | ~/steelclaw/workspace/             |
+| Elon   | CTO                   | Claude Opus 4.5    | Active  | ~/steelclaw/workspace-elon/        |
+| Gary   | CMO                   | Claude Opus 4.5    | Active  | ~/steelclaw/workspace-gary/        |
+| Noah   | Social Media Manager  | Claude Opus 4.5    | Active  | ~/steelclaw/workspace-noah/        |
+| Warren | CRO                   | Claude Opus 4.5    | Active  | ~/steelclaw/workspace-warren/      |
+| Steve  | CPO                   | Claude Opus 4.5    | Active  | ~/steelclaw/workspace-steve/       |
+| Calvin   | Community Agent       | Gemini Flash 2.0   | Active  | ~/steelclaw/workspace-calvin/        |
+
+---
+
+## Delegation Rules
+
+- Tina delegates coding tasks to the coding-agent skill (Claude Code)
+- Elon owns backend/infra decisions and runs nightly NetSmith OS feature builds
+- Gary owns content and distribution; Noah handles social media execution
+- Warren owns community growth and revenue; Calvin handles Discord
+- Steve owns product vision and UX roadmap
+- Brandon has final decision on all strategy
+
+---
+
+Last updated: 2026-02-27

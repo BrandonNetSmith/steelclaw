@@ -26,7 +26,7 @@ services:
     container_name: steelclaw-signal
     restart: unless-stopped
     environment:
-      - MODE=native
+      - MODE=json-rpc
     volumes:
       - signal-cli-data:/home/.local/share/signal-cli
     ports:

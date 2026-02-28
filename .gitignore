@@ -11,8 +11,14 @@ openclaw-runtime/
 node_modules/
 npm-debug.log*
 
+# Build output
+netsmith-os/dist/
+
 # Docker
 .docker/
+
+# OpenClaw workspace state (runtime-generated)
+**/.openclaw/workspace-state.json
 
 # OS
 .DS_Store

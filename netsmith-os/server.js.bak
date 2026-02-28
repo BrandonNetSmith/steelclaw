@@ -1,0 +1,481 @@
+import express from 'express';
+import cors from 'cors';
+import { readdir, readFile, writeFile, stat, mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
+import { join, resolve } from 'path';
+import { homedir, cpus, totalmem, freemem, uptime as osUptime, hostname, platform, release } from 'os';
+import { execSync } from 'child_process';
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const HOME = homedir();
+const OPENCLAW_CONFIG = join(HOME, '.openclaw', 'openclaw.json');
+const WORKSPACES = {
+  'Tina': join(HOME, 'steelclaw', 'workspace'),
+  'Steve': join(HOME, 'steelclaw', 'workspace-steve'),
+  'Elon': join(HOME, 'steelclaw', 'workspace-elon'),
+  'Gary': join(HOME, 'steelclaw', 'workspace-gary'),
+  'Noah': join(HOME, 'steelclaw', 'workspace-noah'),
+  'Warren': join(HOME, 'steelclaw', 'workspace-warren'),
+  'Calvin': join(HOME, 'steelclaw', 'workspace-calvin')
+};
+const STANDUPS_DIR = join(HOME, 'steelclaw', 'workspace', 'standups');
+
+// Ensure standups directory exists
+if (!existsSync(STANDUPS_DIR)) {
+  mkdir(STANDUPS_DIR, { recursive: true }).catch(() => {});
+}
+
+// System Health endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    // CPU info
+    const cpuInfo = cpus();
+    const cpuModel = cpuInfo[0]?.model || 'Unknown';
+    const cpuCores = cpuInfo.length;
+    
+    // Calculate CPU usage (average across cores)
+    let cpuUsage = 0;
+    try {
+      const loadAvg = execSync('cat /proc/loadavg', { encoding: 'utf-8' }).split(' ')[0];
+      cpuUsage = Math.min(100, (parseFloat(loadAvg) / cpuCores) * 100);
+    } catch {
+      cpuUsage = 0;
+    }
+
+    // Memory
+    const totalMem = totalmem();
+    const freeMem = freemem();
+    const usedMem = totalMem - freeMem;
+    const memUsagePercent = (usedMem / totalMem) * 100;
+
+    // Disk usage
+    let diskInfo = { total: 0, used: 0, free: 0, percent: 0 };
+    try {
+      const dfOutput = execSync('df -B1 / | tail -1', { encoding: 'utf-8' });
+      const parts = dfOutput.split(/\s+/);
+      diskInfo = {
+        total: parseInt(parts[1]) || 0,
+        used: parseInt(parts[2]) || 0,
+        free: parseInt(parts[3]) || 0,
+        percent: parseInt(parts[4]) || 0
+      };
+    } catch {}
+
+    // Uptime
+    const uptimeSecs = osUptime();
+    const uptimeDays = Math.floor(uptimeSecs / 86400);
+    const uptimeHours = Math.floor((uptimeSecs % 86400) / 3600);
+    const uptimeMins = Math.floor((uptimeSecs % 3600) / 60);
+
+    // Service statuses
+    const services = [];
+    const checkService = (name, displayName) => {
+      try {
+        const status = execSync(`systemctl --user is-active ${name} 2>/dev/null || echo inactive`, { encoding: 'utf-8' }).trim();
+        let uptime = '';
+        if (status === 'active') {
+          try {
+            const props = execSync(`systemctl --user show ${name} --property=ActiveEnterTimestamp`, { encoding: 'utf-8' });
+            const match = props.match(/ActiveEnterTimestamp=(.+)/);
+            if (match) {
+              const startTime = new Date(match[1]);
+              const runSecs = Math.floor((Date.now() - startTime.getTime()) / 1000);
+              const h = Math.floor(runSecs / 3600);
+              const m = Math.floor((runSecs % 3600) / 60);
+              uptime = h > 0 ? `${h}h ${m}m` : `${m}m`;
+            }
+          } catch {}
+        }
+        services.push({ name: displayName, status, uptime });
+      } catch {
+        services.push({ name: displayName, status: 'unknown', uptime: '' });
+      }
+    };
+
+    checkService('openclaw-gateway', 'OpenClaw Gateway');
+    checkService('netsmith-os', 'NetSmith OS');
+
+    // System info
+    const sysInfo = {
+      hostname: hostname(),
+      platform: platform(),
+      release: release(),
+      arch: process.arch,
+      nodeVersion: process.version
+    };
+
+    res.json({
+      cpu: {
+        model: cpuModel,
+        cores: cpuCores,
+        usage: Math.round(cpuUsage * 10) / 10
+      },
+      memory: {
+        total: totalMem,
+        used: usedMem,
+        free: freeMem,
+        percent: Math.round(memUsagePercent * 10) / 10
+      },
+      disk: diskInfo,
+      uptime: {
+        seconds: uptimeSecs,
+        formatted: uptimeDays > 0 ? `${uptimeDays}d ${uptimeHours}h ${uptimeMins}m` : `${uptimeHours}h ${uptimeMins}m`
+      },
+      services,
+      system: sysInfo,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get health info', details: err.message });
+  }
+});
+
+// Get OpenClaw config
+app.get('/api/config', async (req, res) => {
+  try {
+    const data = await readFile(OPENCLAW_CONFIG, 'utf-8');
+    const config = JSON.parse(data);
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read config', details: err.message });
+  }
+});
+
+// List workspace files
+app.get('/api/workspace/:agent/files', async (req, res) => {
+  const { agent } = req.params;
+  const workspacePath = WORKSPACES[agent];
+  
+  if (!workspacePath) {
+    return res.status(404).json({ error: 'Unknown agent' });
+  }
+
+  try {
+    const entries = await readdir(workspacePath, { withFileTypes: true });
+    const files = [];
+    
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.md')) {
+        const filePath = join(workspacePath, entry.name);
+        const stats = await stat(filePath);
+        files.push({
+          name: entry.name,
+          size: formatSize(stats.size),
+          path: entry.name,
+          fullPath: filePath
+        });
+      }
+    }
+    
+    // Also check memory directory
+    const memoryDir = join(workspacePath, 'memory');
+    if (existsSync(memoryDir)) {
+      const memEntries = await readdir(memoryDir, { withFileTypes: true });
+      for (const entry of memEntries) {
+        if (entry.isFile() && entry.name.endsWith('.md')) {
+          const filePath = join(memoryDir, entry.name);
+          const stats = await stat(filePath);
+          files.push({
+            name: `memory/${entry.name}`,
+            size: formatSize(stats.size),
+            path: `memory/${entry.name}`,
+            fullPath: filePath
+          });
+        }
+      }
+    }
+    
+    res.json({ agent, path: workspacePath, files });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list files', details: err.message });
+  }
+});
+
+// Read workspace file - using query param for path
+app.get('/api/workspace/:agent/file', async (req, res) => {
+  const { agent } = req.params;
+  const filePath = req.query.path;
+  const workspacePath = WORKSPACES[agent];
+  
+  if (!workspacePath) {
+    return res.status(404).json({ error: 'Unknown agent' });
+  }
+  
+  if (!filePath) {
+    return res.status(400).json({ error: 'Missing path parameter' });
+  }
+
+  try {
+    const fullPath = resolve(workspacePath, filePath);
+    // Security: ensure path is within workspace
+    if (!fullPath.startsWith(workspacePath)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const content = await readFile(fullPath, 'utf-8');
+    res.json({ content, path: filePath });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read file', details: err.message });
+  }
+});
+
+// Write workspace file - using query param for path
+app.put('/api/workspace/:agent/file', async (req, res) => {
+  const { agent } = req.params;
+  const filePath = req.query.path;
+  const { content } = req.body;
+  const workspacePath = WORKSPACES[agent];
+  
+  if (!workspacePath) {
+    return res.status(404).json({ error: 'Unknown agent' });
+  }
+  
+  if (!filePath) {
+    return res.status(400).json({ error: 'Missing path parameter' });
+  }
+
+  try {
+    const fullPath = resolve(workspacePath, filePath);
+    // Security: ensure path is within workspace
+    if (!fullPath.startsWith(workspacePath)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    await writeFile(fullPath, content, 'utf-8');
+    res.json({ success: true, path: filePath });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to write file', details: err.message });
+  }
+});
+
+// List standups
+app.get('/api/standups', async (req, res) => {
+  try {
+    if (!existsSync(STANDUPS_DIR)) {
+      return res.json({ standups: [] });
+    }
+    
+    const entries = await readdir(STANDUPS_DIR, { withFileTypes: true });
+    const standups = [];
+    
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.md')) {
+        const filePath = join(STANDUPS_DIR, entry.name);
+        const content = await readFile(filePath, 'utf-8');
+        const preview = content.split('\n').slice(0, 5).join(' ').substring(0, 100);
+        
+        // Parse date from filename (YYYY-MM-DD-standup.md)
+        const dateMatch = entry.name.match(/^(\d{4}-\d{2}-\d{2})/);
+        const date = dateMatch ? formatDate(dateMatch[1]) : entry.name;
+        
+        standups.push({
+          filename: entry.name,
+          date,
+          preview: preview + '...',
+          path: filePath
+        });
+      }
+    }
+    
+    // Sort by filename (date) descending
+    standups.sort((a, b) => b.filename.localeCompare(a.filename));
+    res.json({ standups });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list standups', details: err.message });
+  }
+});
+
+// Get standup content
+app.get('/api/standups/:filename', async (req, res) => {
+  const { filename } = req.params;
+  try {
+    const filePath = join(STANDUPS_DIR, filename);
+    // Security check
+    if (!filePath.startsWith(STANDUPS_DIR)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const content = await readFile(filePath, 'utf-8');
+    res.json({ filename, content });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read standup', details: err.message });
+  }
+});
+
+// Create new standup
+app.post('/api/standups', async (req, res) => {
+  const { topic } = req.body;
+  const today = new Date().toISOString().split('T')[0];
+  const filename = `${today}-standup.md`;
+  const filePath = join(STANDUPS_DIR, filename);
+  
+  const content = `# Executive Standup - ${formatDate(today)}
+
+## Topic
+${topic}
+
+## Attendees
+- **Brandon** (CEO) 👤
+- **Tina** (COO) 🧠
+- **Calvin** (Community) 🦞
+
+---
+
+*Standup initiated. Awaiting agent responses...*
+
+---
+
+## Notes
+
+`;
+
+  try {
+    await mkdir(STANDUPS_DIR, { recursive: true });
+    await writeFile(filePath, content, 'utf-8');
+    res.json({ success: true, filename, content });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create standup', details: err.message });
+  }
+});
+
+// Helper functions
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(dateStr) {
+  const date = new Date(dateStr + 'T12:00:00');
+  return date.toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+}
+
+const PORT = process.env.API_PORT || 7101;
+app.listen(PORT, () => {
+  console.log(`NetSmith OS API server running on port ${PORT}`);
+});
+
+// Get model fleet — built from agent assignments + available API keys
+app.get('/api/models', async (req, res) => {
+  try {
+    const config = JSON.parse(await readFile(OPENCLAW_CONFIG, 'utf-8'));
+
+    // Detect available API keys from .env
+    const envPath = join(HOME, 'steelclaw', '.env');
+    let envContent = '';
+    try { envContent = await readFile(envPath, 'utf-8'); } catch {}
+
+    const keys = {
+      anthropic: /ANTHROPIC_API_KEY\s*=\s*\S+/.test(envContent),
+      openai:    /OPENAI_API_KEY\s*=\s*\S+/.test(envContent),
+      google:    /GEMINI_API_KEY\s*=\s*\S+/.test(envContent),
+      openrouter: /OPENROUTER_API_KEY\s*=\s*\S+/.test(envContent),
+    };
+
+    // Build model → agents map from openclaw config
+    const defaultModel = config.agents?.defaults?.model?.primary || 'anthropic/claude-opus-4-5';
+    const modelAgents = {};
+    for (const agent of (config.agents?.list || [])) {
+      const model = agent.model || defaultModel;
+      if (!modelAgents[model]) modelAgents[model] = [];
+      modelAgents[model].push(agent.id || agent.name || 'main');
+    }
+
+    // Active models (actually assigned to agents)
+    const fleet = Object.entries(modelAgents).map(([modelName, agents]) => ({
+      name: modelName,
+      shortName: modelName.split('/').slice(-1)[0],
+      purpose: modelPurpose(modelName),
+      provider: modelProvider(modelName),
+      authMethod: modelAuth(modelName, keys),
+      status: 'Active',
+      agents,
+      agentCount: agents.length,
+      cost: modelCost(modelName),
+    }));
+
+    // Available models from provider keys (not yet assigned to any agent)
+    const usedModels = new Set(fleet.map(m => m.name));
+
+    const addAvailable = (name, purpose, auth) => {
+      if (!usedModels.has(name)) {
+        fleet.push({
+          name,
+          shortName: name.split('/').slice(-1)[0],
+          purpose,
+          provider: modelProvider(name),
+          authMethod: auth,
+          status: 'Available',
+          agents: [],
+          agentCount: 0,
+          cost: modelCost(name),
+        });
+      }
+    };
+
+    if (keys.anthropic) {
+      addAvailable('anthropic/claude-sonnet-4-5', 'Balanced speed & capability', 'API key');
+      addAvailable('anthropic/claude-3-5-haiku-latest', 'Fast, lightweight tasks', 'API key');
+    }
+    if (keys.openai) {
+      addAvailable('openai/gpt-4o', 'Multimodal reasoning & vision', 'API key');
+      addAvailable('openai/gpt-4o-mini', 'Fast, cost-effective tasks', 'API key');
+    }
+    if (keys.google) {
+      addAvailable('google/gemini-2.5-pro', 'Long context & deep reasoning', 'API key');
+      addAvailable('google/gemini-2.5-flash', 'Fast Google reasoning', 'API key');
+    }
+    if (keys.openrouter) {
+      addAvailable('openrouter/auto', 'Auto-route to best model', 'OpenRouter');
+    }
+
+    res.json({ fleet, keys });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function modelProvider(name) {
+  if (name.startsWith('openrouter/')) return 'openrouter';
+  const p = name.split('/')[0];
+  return p || 'unknown';
+}
+
+function modelAuth(name, keys) {
+  if (name.startsWith('openrouter/')) return 'OpenRouter';
+  if (name.startsWith('anthropic/')) return 'API key';
+  if (name.startsWith('openai/')) return 'API key';
+  if (name.startsWith('google/')) return 'API key';
+  return 'API key';
+}
+
+function modelPurpose(name) {
+  if (name.includes('opus')) return 'Primary brain — complex reasoning';
+  if (name.includes('sonnet')) return 'Balanced speed & capability';
+  if (name.includes('haiku')) return 'Fast, lightweight tasks';
+  if (name.includes('gpt-4o-mini')) return 'Fast, cost-effective tasks';
+  if (name.includes('gpt-4o')) return 'Multimodal reasoning & vision';
+  if (name.includes('gemini') && name.includes('flash')) return 'Fast iteration & community';
+  if (name.includes('gemini') && name.includes('pro')) return 'Long context & deep reasoning';
+  if (name === 'openrouter/auto') return 'Auto-route to best model';
+  return 'General purpose';
+}
+
+function modelCost(name) {
+  if (name.includes("opus-4-5")) return "$15/1M in · $75/1M out";
+  if (name.includes("claude-sonnet-4-5")) return "$3/1M in · $15/1M out";
+  if (name.includes("haiku")) return "$0.25/1M in · $1.25/1M out";
+  if (name.includes("gpt-4o-mini")) return "$0.15/1M in · $0.60/1M out";
+  if (name.includes("gpt-4o")) return "$2.50/1M in · $10/1M out";
+  if (name.includes("gemini-2.5-flash")) return "$0.075/1M in · $0.30/1M out";
+  if (name.includes("gemini-2.5-pro")) return "$1.25/1M in · $5/1M out";
+  if (name.includes("openrouter/auto")) return "varies";
+  return "varies";
+}
