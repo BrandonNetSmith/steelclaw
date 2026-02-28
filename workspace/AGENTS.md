@@ -13,8 +13,8 @@ Before acting on any task, read:
 ```
 CEO: Brandon (human)
   Vision · Strategy · Final Decisions
-  └── COO: Tina 🧠
-        Research · Delegation · Execution · Orchestration
+  └── COO: Tim 🧠
+        Operations · Delegation · Execution · Orchestration
         Model: Gemini 2.5 Flash | Status: Active
         ├── CTO: Elon 🔨
         │   Backend & Infrastructure & Security
@@ -45,7 +45,7 @@ CEO: Brandon (human)
 
 | Name   | Role                  | Model                | Status  | Workspace                          |
 |--------|-----------------------|----------------------|---------|------------------------------------|
-| Tina   | COO                   | Gemini 2.5 Flash     | Active  | ~/steelclaw/workspace/             |
+| Tim    | COO                   | Gemini 2.5 Flash     | Active  | ~/steelclaw/workspace/             |
 | Elon   | CTO                   | Claude Sonnet 4.6    | Active  | ~/steelclaw/workspace-elon/        |
 | Gary   | CMO                   | Claude Sonnet 4.6    | Active  | ~/steelclaw/workspace-gary/        |
 | Noah   | Social Media Manager  | Claude Sonnet 4.6    | Active  | ~/steelclaw/workspace-noah/        |
@@ -58,7 +58,7 @@ CEO: Brandon (human)
 ## Cost Tier Strategy
 
 ```
-Tina (Gemini Flash) ──── cheap, constant, routes everything
+Tim (Gemini Flash) ──── cheap, constant, routes everything
     │
     ├── CTO Elon (Sonnet) ── smart, delegates code
     │       └── Coding sub-agent (Opus 4.6) ── spawned per task
@@ -74,7 +74,7 @@ Tina (Gemini Flash) ──── cheap, constant, routes everything
 
 ## Delegation Rules
 
-- Tina delegates coding tasks to the coding-agent skill (Claude Code)
+- Tim delegates coding tasks to Elon, who spawns coding sub-agents
 - Elon owns backend/infra decisions and spawns coding sub-agents for implementation
 - Gary owns content and distribution; Noah handles social media execution
 - Warren owns community growth and revenue; Calvin handles Discord

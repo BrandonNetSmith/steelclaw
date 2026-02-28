@@ -1,59 +1,78 @@
-# SteelClaw
+# NetSmithOS
 
-Muddy — Personal AI Agent stack running on SteelClaw (Ubuntu 24.04 LTS).
+AI Agent stack running on SteelClaw (Ubuntu 24.04 LTS).
 
 Built on [OpenClaw](https://github.com/openclaw/openclaw) with Discord, Slack, and Signal integrations.
 
 ## Stack
-- **Agent**: Muddy (claude-opus-4-6) — personal orchestrator
-- **Community**: Clay (gemini-flash) — community support  
-- **Platform**: OpenClaw on Docker
+- **COO**: Tim (gemini-2.5-flash) — orchestrator, delegates to department heads
+- **Department Heads**: Elon (CTO), Gary (CMO), Steve (CPO), Warren (CRO) — claude-sonnet-4.6
+- **Community**: Calvin (gemini-2.5-flash) — Discord community support
+- **Platform**: OpenClaw on systemd
 - **Host**: SteelClaw (192.168.50.55)
+- **Data**: PostgreSQL on Debian (192.168.50.183)
 
 ## Quick Start
 
 ```bash
 # 1. Clone
-git clone https://github.com/BrandonNetSmith/steelclaw.git
-cd steelclaw
+git clone https://github.com/BrandonNetSmith/NetSmithOS.git
+cd NetSmithOS
 
 # 2. Configure
 cp .env.example .env
 nano .env  # Fill in your tokens
 
-# 3. Launch
-docker compose up -d
+# 3. Restore secrets (if migrating)
+./restore-secrets.sh /path/to/steelclaw-secrets-YYYYMMDD.tar.gz.gpg
 
-# 4. View logs
-docker compose logs -f
+# 4. Launch OpenClaw
+./start-openclaw.sh
 ```
 
 ## Structure
 
 ```
-steelclaw/
+NetSmithOS/
 ├── config/
-│   └── openclaw.json      # OpenClaw config (channels, model, gateway)
-├── workspace/
-│   ├── SOUL.md             # Muddy's persona & behavior
-│   ├── AGENTS.md           # Multi-agent routing (Muddy + Clay)
-│   └── skills/
-│       └── memory/         # Persistent memory skill
-│           └── SKILL.md
+│   └── openclaw.json          # OpenClaw config (channels, models, gateway)
+├── workspace/                 # Tim (COO) workspace
+│   ├── SOUL.md                # Tim's persona & behavior (Tim Cook style)
+│   ├── AGENTS.md              # Org chart & delegation rules
+│   ├── MEMORY.md              # Persistent memory
+│   └── memory/                # Semantic memory files
+├── workspace-elon/            # CTO workspace
+├── workspace-gary/            # CMO workspace
+├── workspace-noah/            # Social Media Manager workspace
+├── workspace-warren/          # CRO workspace
+├── workspace-steve/           # CPO workspace
+├── workspace-calvin/          # Community Agent workspace
+├── netsmith-os/               # Dashboard (React + Vite)
 ├── docker-compose.yml
+├── backup-secrets.sh          # Encrypted secrets backup
+├── restore-secrets.sh         # Encrypted secrets restore
 ├── .env.example
 └── README.md
 ```
 
+## Agents
+
+| Name   | Role  | Model              | Purpose                          |
+|--------|-------|--------------------|----------------------------------|
+| Tim    | COO   | Gemini 2.5 Flash   | Orchestration & delegation       |
+| Elon   | CTO   | Claude Sonnet 4.6  | Backend, infra, security         |
+| Gary   | CMO   | Claude Sonnet 4.6  | Content & marketing              |
+| Noah   | SMM   | Claude Sonnet 4.6  | Social media execution           |
+| Warren | CRO   | Claude Sonnet 4.6  | Revenue & community              |
+| Steve  | CPO   | Claude Sonnet 4.6  | Product vision & UX              |
+| Calvin | Comm  | Gemini 2.5 Flash   | Discord community support        |
+
 ## Channels
 | Channel | Agent | Purpose |
 |---------|-------|---------|
-| Discord #muddy-tasks | Muddy | Private task pipeline |
-| Discord #chat | Clay | Community chat |
-| Discord #questions | Clay | Community Q&A |
-| Discord #welcome | Clay | Onboarding |
-| Slack DM | Muddy | Personal messages |
-
-## Skills
-- **memory** — Persistent memory across sessions
-- **sora_longform_generator** — 30-60s AI video generation (coming soon)
+| Discord #tim-tasks | Tim | Private task pipeline |
+| Discord #chat | Calvin | Community chat |
+| Discord #questions | Calvin | Community Q&A |
+| Discord #welcome | Calvin | Onboarding |
+| Slack DM | Tim | Personal messages |
+| Signal | Tim | Personal messages |
