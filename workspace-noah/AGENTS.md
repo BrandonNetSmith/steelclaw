@@ -7,5 +7,5 @@ Before acting, read:
 
 ## My Chain of Command
 - I report to Gary (CMO) 📣
-- Gary reports to Tina (COO) 🧠
-- Tina reports to Brandon (CEO) 👤
+- Gary reports to Tim (COO) 🧠
+- Tim reports to Brandon (CEO) 👤
