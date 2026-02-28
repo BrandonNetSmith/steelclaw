@@ -21,3 +21,6 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Encrypted backup files
+steelclaw-secrets-*.tar.gz.gpg
