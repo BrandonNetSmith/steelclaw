@@ -1,32 +1,32 @@
 :root {
-  --bg-primary: #0f0d0a;
-  --bg-secondary: #181410;
-  --bg-tertiary: #221c16;
-  --bg-card: #1a1510;
-  --bg-hover: #2a2018;
+  --bg-primary: #0a0f0d;
+  --bg-secondary: #111916;
+  --bg-tertiary: #1a2420;
+  --bg-card: #151d19;
+  --bg-hover: #1e2a25;
   
-  --text-primary: #f0e8d8;
-  --text-secondary: #a89880;
-  --text-muted: #6b5a48;
+  --text-primary: #e8efe9;
+  --text-secondary: #9ca8a0;
+  --text-muted: #5c6660;
   
-  --accent-primary: #d4522a;
-  --accent-secondary: #b84020;
-  --accent-tertiary: #8b2c12;
-  --accent-gold: #c9922a;
-  --accent-gold-dim: #8b641a;
+  --accent-primary: #10b981;
+  --accent-secondary: #059669;
+  --accent-tertiary: #047857;
+  --accent-gold: #d4a574;
+  --accent-gold-dim: #a67c52;
   
-  --border-color: #3a2a1e;
-  --border-light: #2a1e14;
+  --border-color: #2a3832;
+  --border-light: #1e2a25;
   
-  --status-active: #c97c2a;
+  --status-active: #10b981;
   --status-inactive: #6b7280;
   --status-scaffolded: #f59e0b;
   --status-future: #6366f1;
   --status-deprecated: #ef4444;
   
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
   
   --radius-sm: 4px;
   --radius-md: 8px;
@@ -283,7 +283,7 @@ input, textarea, select {
 }
 
 .status-badge.active {
-  background: rgba(201, 146, 42, 0.15);
+  background: rgba(16, 185, 129, 0.15);
   color: var(--status-active);
 }
 

@@ -17,45 +17,15 @@ interface FileInfo {
 
 const agents: Agent[] = [
   {
-    name: 'Tina',
+    name: 'Tim',
     tagline: 'COO • Primary Operations',
-    path: '~/steelclaw/workspace/',
+    path: '/home/brandon/steelclaw/workspace/',
     avatar: '🧠'
   },
   {
-    name: 'Elon',
-    tagline: 'CTO • Backend & Infrastructure',
-    path: '~/steelclaw/workspace-elon/',
-    avatar: '🔨'
-  },
-  {
-    name: 'Gary',
-    tagline: 'CMO • Content & Marketing',
-    path: '~/steelclaw/workspace-gary/',
-    avatar: '📣'
-  },
-  {
-    name: 'Noah',
-    tagline: 'Social Media Manager • Content & Reach',
-    path: '~/steelclaw/workspace-noah/',
-    avatar: '📱'
-  },
-  {
-    name: 'Warren',
-    tagline: 'CRO • Revenue & Community',
-    path: '~/steelclaw/workspace-warren/',
-    avatar: '💰'
-  },
-  {
-    name: 'Steve',
-    tagline: 'CPO • Product Vision & UX',
-    path: '~/steelclaw/workspace-steve/',
-    avatar: '🎨'
-  },
-  {
     name: 'Calvin',
-    tagline: 'Community Agent • Discord',
-    path: '~/steelclaw/workspace-calvin/',
+    tagline: 'Community Agent • Discord Support',
+    path: '/home/brandon/steelclaw/workspace-calvin/',
     avatar: '🦞'
   }
 ]

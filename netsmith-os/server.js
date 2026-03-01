@@ -1,10 +1,19 @@
 import express from 'express';
 import cors from 'cors';
 import { readdir, readFile, writeFile, stat, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, createReadStream } from 'fs';
 import { join, resolve } from 'path';
-import { homedir, cpus, totalmem, freemem, uptime as osUptime, hostname, platform, release } from 'os';
-import { execSync } from 'child_process';
+import { homedir } from 'os';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const execFileAsync = promisify(execFile);
 
 const app = express();
 app.use(cors());
@@ -12,126 +21,247 @@ app.use(express.json());
 
 const HOME = homedir();
 const OPENCLAW_CONFIG = join(HOME, '.openclaw', 'openclaw.json');
-const WORKSPACES = {
-  'Tina': join(HOME, 'steelclaw', 'workspace'),
-  'Steve': join(HOME, 'steelclaw', 'workspace-steve'),
-  'Elon': join(HOME, 'steelclaw', 'workspace-elon'),
-  'Gary': join(HOME, 'steelclaw', 'workspace-gary'),
-  'Noah': join(HOME, 'steelclaw', 'workspace-noah'),
-  'Warren': join(HOME, 'steelclaw', 'workspace-warren'),
-  'Calvin': join(HOME, 'steelclaw', 'workspace-calvin')
-};
+const CRON_JOBS_FILE = join(HOME, '.openclaw', 'cron', 'jobs.json');
+const CRON_RUNS_DIR = join(HOME, '.openclaw', 'cron', 'runs');
 const STANDUPS_DIR = join(HOME, 'steelclaw', 'workspace', 'standups');
 
-// Ensure standups directory exists
+const WORKSPACES = {
+  'main': join(HOME, 'steelclaw', 'workspace'),
+  'tim': join(HOME, 'steelclaw', 'workspace'),
+  'elon': join(HOME, 'steelclaw', 'workspace-elon'),
+  'gary': join(HOME, 'steelclaw', 'workspace-gary'),
+  'warren': join(HOME, 'steelclaw', 'workspace-warren'),
+  'noah': join(HOME, 'steelclaw', 'workspace-noah'),
+  'steve': join(HOME, 'steelclaw', 'workspace-steve'),
+  'calvin': join(HOME, 'steelclaw', 'workspace-calvin'),
+};
+
+
+// ─── Agent display metadata ─────────────────────────────────────────────────────
+const AGENT_META = {
+  main: { name: "Tim", role: "COO", emoji: "🧠" },
+  tim:  { name: "Tim", role: "COO", emoji: "🧠" },
+  elon: { name: "Elon", role: "CTO", emoji: "⚡" },
+  gary: { name: "Gary", role: "CMO", emoji: "📢" },
+  warren: { name: "Warren", role: "CRO", emoji: "💰" },
+  steve: { name: "Steve", role: "CPO", emoji: "🎯" },
+  noah: { name: "Noah", role: "SMM", emoji: "📱" },
+  calvin: { name: "Calvin", role: "Community", emoji: "🦞" },
+};
+
+// ─── Pricing data ───────────────────────────────────────────────────────────────
+const PRICING_PATH = join(__dirname, 'src', 'server', 'pricing.json');
+let PRICING = {};
+try {
+  const pricingRaw = await readFile(PRICING_PATH, 'utf-8');
+  PRICING = JSON.parse(pricingRaw);
+} catch (err) {
+  console.error('Warning: Could not load pricing.json:', err.message);
+}
+
+// ─── CLI output cache ───────────────────────────────────────────────────────────
+const cliCache = new Map();
+const CLI_CACHE_TTL = 10_000; // 10 seconds
+
+async function cachedExec(command, args, cacheKey) {
+  const now = Date.now();
+  const cached = cliCache.get(cacheKey);
+  if (cached && (now - cached.ts) < CLI_CACHE_TTL) {
+    return cached.data;
+  }
+  try {
+    const { stdout } = await execFileAsync(command, args, { timeout: 15000 });
+    const data = JSON.parse(stdout);
+    cliCache.set(cacheKey, { ts: now, data });
+    return data;
+  } catch (err) {
+    // Return cached data if available, even if stale
+    if (cached) return cached.data;
+    throw err;
+  }
+}
+
+// ─── In-memory alerts ───────────────────────────────────────────────────────────
+let activeAlerts = [];
+
+// ─── SSE clients ────────────────────────────────────────────────────────────────
+const sseClients = new Set();
+
+// ─── Model name normalization ───────────────────────────────────────────────────
+function normalizeModelName(model) {
+  if (!model) return 'unknown';
+  // Strip provider prefixes
+  let name = model.replace(/^(openrouter\/|anthropic\/|google\/|openai\/)/, '');
+  // Map common short names to full pricing keys
+  const aliases = {
+    'claude-opus-4-5': 'claude-opus-4-5-20250120',
+    'claude-opus-4': 'claude-opus-4-20250514',
+    'claude-sonnet-4': 'claude-sonnet-4-20250514',
+    'claude-sonnet-4-6': 'claude-sonnet-4-6-20250514',
+    'claude-haiku-3': 'claude-haiku-3-20250307',
+    'gemini-2.5-flash': 'gemini-2.5-flash',
+    'gemini-flash-2.0': 'gemini-2.5-flash',
+    'gemini-2.5-pro': 'gemini-2.5-pro',
+    'gpt-4o': 'gpt-4o',
+    'gpt-4o-mini': 'gpt-4o-mini',
+  };
+  return aliases[name] || name;
+}
+
+// ─── Cost calculation helpers ───────────────────────────────────────────────────
+function calculateRunCost(run) {
+  const modelKey = normalizeModelName(run.model);
+  const rates = PRICING[modelKey];
+  if (!rates || !run.usage) return 0;
+  const inputCost = (run.usage.input_tokens || 0) / 1_000_000 * rates.input;
+  const outputCost = (run.usage.output_tokens || 0) / 1_000_000 * rates.output;
+  return inputCost + outputCost;
+}
+
+async function readAllCronRuns() {
+  const runs = [];
+  try {
+    const files = await readdir(CRON_RUNS_DIR);
+    for (const file of files) {
+      if (!file.endsWith('.jsonl')) continue;
+      try {
+        const content = await readFile(join(CRON_RUNS_DIR, file), 'utf-8');
+        const lines = content.split('\n').filter(l => l.trim());
+        for (const line of lines) {
+          try {
+            const run = JSON.parse(line);
+            runs.push(run);
+          } catch { /* skip malformed lines */ }
+        }
+      } catch { /* skip unreadable files */ }
+    }
+  } catch { /* runs dir might not exist */ }
+  return runs;
+}
+
+function computeCostSummary(runs) {
+  const now = Date.now();
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const todayMs = startOfToday.getTime();
+
+  const startOfWeek = new Date();
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+  const weekMs = startOfWeek.getTime();
+
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+  const monthMs = startOfMonth.getTime();
+
+  let today = 0;
+  let thisWeek = 0;
+  let thisMonth = 0;
+  const byAgent = {};
+  const byModel = {};
+
+  for (const run of runs) {
+    if (run.action !== 'finished') continue;
+    const cost = calculateRunCost(run);
+    if (cost === 0) continue;
+
+    const ts = run.ts || 0;
+
+    // Extract agent from sessionKey: "agent:<agentId>:..."
+    let agentId = 'unknown';
+    if (run.sessionKey) {
+      const parts = run.sessionKey.split(':');
+      if (parts.length >= 2) agentId = parts[1];
+    }
+
+    const modelKey = normalizeModelName(run.model);
+
+    // Accumulate by agent
+    byAgent[agentId] = (byAgent[agentId] || 0) + cost;
+
+    // Accumulate by model
+    byModel[modelKey] = (byModel[modelKey] || 0) + cost;
+
+    // Time-based buckets
+    if (ts >= todayMs) today += cost;
+    if (ts >= weekMs) thisWeek += cost;
+    if (ts >= monthMs) thisMonth += cost;
+  }
+
+  // Burn rate: average daily cost this month
+  const daysThisMonth = Math.max(1, (now - monthMs) / (1000 * 60 * 60 * 24));
+  const burnRate = thisMonth / daysThisMonth;
+
+  return { today, thisWeek, thisMonth, burnRate, byAgent, byModel };
+}
+
+// ─── Alert generation ───────────────────────────────────────────────────────────
+async function generateAlerts() {
+  const alerts = [];
+
+  // Check gateway status
+  try {
+    await cachedExec('openclaw', ['status', '--json'], 'status');
+  } catch {
+    alerts.push({
+      id: 'gateway-offline',
+      severity: 'critical',
+      message: 'OpenClaw gateway is offline or unreachable',
+      ts: Date.now(),
+    });
+  }
+
+  // Check for cron failures in last 24h
+  try {
+    const runs = await readAllCronRuns();
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const recentFailures = runs.filter(
+      r => r.action === 'finished' && r.status === 'error' && (r.ts || 0) >= cutoff
+    );
+    for (const fail of recentFailures) {
+      alerts.push({
+        id: `cron-fail-${fail.jobId}-${fail.ts}`,
+        severity: 'warning',
+        message: `Cron job ${fail.jobId} failed: ${(fail.error || 'unknown error').substring(0, 120)}`,
+        ts: fail.ts,
+        jobId: fail.jobId,
+      });
+    }
+  } catch { /* ignore */ }
+
+  // Check delivery queue failures from cron runs
+  try {
+    const runs = await readAllCronRuns();
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const deliveryFailures = runs.filter(
+      r => r.action === 'finished' && r.deliveryStatus === 'unknown' && (r.ts || 0) >= cutoff
+    );
+    for (const fail of deliveryFailures) {
+      // Don't duplicate alerts already captured as cron failures
+      if (fail.status === 'error') continue;
+      alerts.push({
+        id: `delivery-fail-${fail.jobId}-${fail.ts}`,
+        severity: 'warning',
+        message: `Delivery failed for job ${fail.jobId}`,
+        ts: fail.ts,
+        jobId: fail.jobId,
+      });
+    }
+  } catch { /* ignore */ }
+
+  activeAlerts = alerts;
+  return alerts;
+}
+
+// ─── Ensure standups directory exists ───────────────────────────────────────────
 if (!existsSync(STANDUPS_DIR)) {
   mkdir(STANDUPS_DIR, { recursive: true }).catch(() => {});
 }
 
-// System Health endpoint
-app.get('/api/health', async (req, res) => {
-  try {
-    // CPU info
-    const cpuInfo = cpus();
-    const cpuModel = cpuInfo[0]?.model || 'Unknown';
-    const cpuCores = cpuInfo.length;
-    
-    // Calculate CPU usage (average across cores)
-    let cpuUsage = 0;
-    try {
-      const loadAvg = execSync('cat /proc/loadavg', { encoding: 'utf-8' }).split(' ')[0];
-      cpuUsage = Math.min(100, (parseFloat(loadAvg) / cpuCores) * 100);
-    } catch {
-      cpuUsage = 0;
-    }
-
-    // Memory
-    const totalMem = totalmem();
-    const freeMem = freemem();
-    const usedMem = totalMem - freeMem;
-    const memUsagePercent = (usedMem / totalMem) * 100;
-
-    // Disk usage
-    let diskInfo = { total: 0, used: 0, free: 0, percent: 0 };
-    try {
-      const dfOutput = execSync('df -B1 / | tail -1', { encoding: 'utf-8' });
-      const parts = dfOutput.split(/\s+/);
-      diskInfo = {
-        total: parseInt(parts[1]) || 0,
-        used: parseInt(parts[2]) || 0,
-        free: parseInt(parts[3]) || 0,
-        percent: parseInt(parts[4]) || 0
-      };
-    } catch {}
-
-    // Uptime
-    const uptimeSecs = osUptime();
-    const uptimeDays = Math.floor(uptimeSecs / 86400);
-    const uptimeHours = Math.floor((uptimeSecs % 86400) / 3600);
-    const uptimeMins = Math.floor((uptimeSecs % 3600) / 60);
-
-    // Service statuses
-    const services = [];
-    const checkService = (name, displayName) => {
-      try {
-        const status = execSync(`systemctl --user is-active ${name} 2>/dev/null || echo inactive`, { encoding: 'utf-8' }).trim();
-        let uptime = '';
-        if (status === 'active') {
-          try {
-            const props = execSync(`systemctl --user show ${name} --property=ActiveEnterTimestamp`, { encoding: 'utf-8' });
-            const match = props.match(/ActiveEnterTimestamp=(.+)/);
-            if (match) {
-              const startTime = new Date(match[1]);
-              const runSecs = Math.floor((Date.now() - startTime.getTime()) / 1000);
-              const h = Math.floor(runSecs / 3600);
-              const m = Math.floor((runSecs % 3600) / 60);
-              uptime = h > 0 ? `${h}h ${m}m` : `${m}m`;
-            }
-          } catch {}
-        }
-        services.push({ name: displayName, status, uptime });
-      } catch {
-        services.push({ name: displayName, status: 'unknown', uptime: '' });
-      }
-    };
-
-    checkService('openclaw-gateway', 'OpenClaw Gateway');
-    checkService('netsmith-os', 'NetSmith OS');
-
-    // System info
-    const sysInfo = {
-      hostname: hostname(),
-      platform: platform(),
-      release: release(),
-      arch: process.arch,
-      nodeVersion: process.version
-    };
-
-    res.json({
-      cpu: {
-        model: cpuModel,
-        cores: cpuCores,
-        usage: Math.round(cpuUsage * 10) / 10
-      },
-      memory: {
-        total: totalMem,
-        used: usedMem,
-        free: freeMem,
-        percent: Math.round(memUsagePercent * 10) / 10
-      },
-      disk: diskInfo,
-      uptime: {
-        seconds: uptimeSecs,
-        formatted: uptimeDays > 0 ? `${uptimeDays}d ${uptimeHours}h ${uptimeMins}m` : `${uptimeHours}h ${uptimeMins}m`
-      },
-      services,
-      system: sysInfo,
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to get health info', details: err.message });
-  }
-});
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXISTING ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
 
 // Get OpenClaw config
 app.get('/api/config', async (req, res) => {
@@ -147,8 +277,8 @@ app.get('/api/config', async (req, res) => {
 // List workspace files
 app.get('/api/workspace/:agent/files', async (req, res) => {
   const { agent } = req.params;
-  const workspacePath = WORKSPACES[agent];
-  
+  const workspacePath = WORKSPACES[agent.toLowerCase()];
+
   if (!workspacePath) {
     return res.status(404).json({ error: 'Unknown agent' });
   }
@@ -156,7 +286,7 @@ app.get('/api/workspace/:agent/files', async (req, res) => {
   try {
     const entries = await readdir(workspacePath, { withFileTypes: true });
     const files = [];
-    
+
     for (const entry of entries) {
       if (entry.isFile() && entry.name.endsWith('.md')) {
         const filePath = join(workspacePath, entry.name);
@@ -165,11 +295,11 @@ app.get('/api/workspace/:agent/files', async (req, res) => {
           name: entry.name,
           size: formatSize(stats.size),
           path: entry.name,
-          fullPath: filePath
+          fullPath: filePath,
         });
       }
     }
-    
+
     // Also check memory directory
     const memoryDir = join(workspacePath, 'memory');
     if (existsSync(memoryDir)) {
@@ -182,39 +312,38 @@ app.get('/api/workspace/:agent/files', async (req, res) => {
             name: `memory/${entry.name}`,
             size: formatSize(stats.size),
             path: `memory/${entry.name}`,
-            fullPath: filePath
+            fullPath: filePath,
           });
         }
       }
     }
-    
+
     res.json({ agent, path: workspacePath, files });
   } catch (err) {
     res.status(500).json({ error: 'Failed to list files', details: err.message });
   }
 });
 
-// Read workspace file - using query param for path
+// Read workspace file
 app.get('/api/workspace/:agent/file', async (req, res) => {
   const { agent } = req.params;
   const filePath = req.query.path;
-  const workspacePath = WORKSPACES[agent];
-  
+  const workspacePath = WORKSPACES[agent.toLowerCase()];
+
   if (!workspacePath) {
     return res.status(404).json({ error: 'Unknown agent' });
   }
-  
+
   if (!filePath) {
     return res.status(400).json({ error: 'Missing path parameter' });
   }
 
   try {
     const fullPath = resolve(workspacePath, filePath);
-    // Security: ensure path is within workspace
     if (!fullPath.startsWith(workspacePath)) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
+
     const content = await readFile(fullPath, 'utf-8');
     res.json({ content, path: filePath });
   } catch (err) {
@@ -222,28 +351,27 @@ app.get('/api/workspace/:agent/file', async (req, res) => {
   }
 });
 
-// Write workspace file - using query param for path
+// Write workspace file
 app.put('/api/workspace/:agent/file', async (req, res) => {
   const { agent } = req.params;
   const filePath = req.query.path;
   const { content } = req.body;
-  const workspacePath = WORKSPACES[agent];
-  
+  const workspacePath = WORKSPACES[agent.toLowerCase()];
+
   if (!workspacePath) {
     return res.status(404).json({ error: 'Unknown agent' });
   }
-  
+
   if (!filePath) {
     return res.status(400).json({ error: 'Missing path parameter' });
   }
 
   try {
     const fullPath = resolve(workspacePath, filePath);
-    // Security: ensure path is within workspace
     if (!fullPath.startsWith(workspacePath)) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
+
     await writeFile(fullPath, content, 'utf-8');
     res.json({ success: true, path: filePath });
   } catch (err) {
@@ -257,30 +385,28 @@ app.get('/api/standups', async (req, res) => {
     if (!existsSync(STANDUPS_DIR)) {
       return res.json({ standups: [] });
     }
-    
+
     const entries = await readdir(STANDUPS_DIR, { withFileTypes: true });
     const standups = [];
-    
+
     for (const entry of entries) {
       if (entry.isFile() && entry.name.endsWith('.md')) {
         const filePath = join(STANDUPS_DIR, entry.name);
         const content = await readFile(filePath, 'utf-8');
         const preview = content.split('\n').slice(0, 5).join(' ').substring(0, 100);
-        
-        // Parse date from filename (YYYY-MM-DD-standup.md)
+
         const dateMatch = entry.name.match(/^(\d{4}-\d{2}-\d{2})/);
         const date = dateMatch ? formatDate(dateMatch[1]) : entry.name;
-        
+
         standups.push({
           filename: entry.name,
           date,
           preview: preview + '...',
-          path: filePath
+          path: filePath,
         });
       }
     }
-    
-    // Sort by filename (date) descending
+
     standups.sort((a, b) => b.filename.localeCompare(a.filename));
     res.json({ standups });
   } catch (err) {
@@ -293,11 +419,10 @@ app.get('/api/standups/:filename', async (req, res) => {
   const { filename } = req.params;
   try {
     const filePath = join(STANDUPS_DIR, filename);
-    // Security check
     if (!filePath.startsWith(STANDUPS_DIR)) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
+
     const content = await readFile(filePath, 'utf-8');
     res.json({ filename, content });
   } catch (err) {
@@ -311,7 +436,7 @@ app.post('/api/standups', async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const filename = `${today}-standup.md`;
   const filePath = join(STANDUPS_DIR, filename);
-  
+
   const content = `# Executive Standup - ${formatDate(today)}
 
 ## Topic
@@ -319,8 +444,8 @@ ${topic}
 
 ## Attendees
 - **Brandon** (CEO) 👤
-- **Tina** (COO) 🧠
-- **Calvin** (Community) 🦞
+- **Tim** (COO) 🧠
+- **Calvin** (Community Agent) 🦞
 
 ---
 
@@ -341,7 +466,341 @@ ${topic}
   }
 });
 
-// Helper functions
+// ═══════════════════════════════════════════════════════════════════════════════
+// NEW WAR ROOM ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/health — Gateway health check
+app.get('/api/health', async (req, res) => {
+  try {
+    const statusData = await cachedExec('openclaw', ['status', '--json'], 'status');
+    const agentCount = statusData.heartbeat?.agents?.length || 0;
+    res.json({
+      gateway: 'online',
+      uptime: process.uptime(),
+      version: '1.0.0',
+      agentCount,
+    });
+  } catch (err) {
+    res.json({
+      gateway: 'offline',
+      uptime: process.uptime(),
+      version: '1.0.0',
+      agentCount: 0,
+      error: err.message,
+    });
+  }
+});
+
+// GET /api/agents — List all agents with status
+app.get('/api/agents', async (req, res) => {
+  try {
+    const configData = await readFile(OPENCLAW_CONFIG, 'utf-8');
+    const config = JSON.parse(configData);
+
+    // Get status data for heartbeat/agent info
+    let statusData = null;
+    try {
+      statusData = await cachedExec('openclaw', ['status', '--json'], 'status');
+    } catch { /* gateway might be down */ }
+
+    // Get session data for activity info
+    let sessionsData = null;
+    try {
+      sessionsData = await cachedExec(
+        'openclaw', ['sessions', '--all-agents', '--json'], 'sessions-all'
+      );
+    } catch { /* might fail */ }
+
+    // Build agent list from heartbeat agents, fallback to WORKSPACES keys
+    // Known valid agents (filter out stale/renamed agents)
+    const VALID_AGENTS = new Set(Object.keys(AGENT_META));
+    let heartbeatAgents = (statusData?.heartbeat?.agents || [])
+      .filter(ha => VALID_AGENTS.has(ha.agentId));
+    
+    // Deduplicate: if both main and tim exist, keep only main
+    const hasMain = heartbeatAgents.some(ha => ha.agentId === 'main');
+    if (hasMain) {
+      heartbeatAgents = heartbeatAgents.filter(ha => ha.agentId !== 'tim');
+    }
+
+    if (heartbeatAgents.length === 0) {
+      heartbeatAgents = Object.keys(WORKSPACES)
+        .filter(k => k !== 'tim')
+        .map(k => ({ agentId: k, enabled: true, every: null }));
+    }
+    const agents = heartbeatAgents.map(ha => {
+      const agentId = ha.agentId;
+      const workspace = WORKSPACES[agentId] || null;
+
+      // Find latest session for this agent
+      let latestSession = null;
+      if (sessionsData?.sessions) {
+        const agentSessions = sessionsData.sessions.filter(s => s.agentId === agentId);
+        if (agentSessions.length > 0) {
+          latestSession = agentSessions.reduce((a, b) =>
+            (a.updatedAt || 0) > (b.updatedAt || 0) ? a : b
+          );
+        }
+      }
+
+      // Determine status: if heartbeat enabled and has recent session, it's active
+      let status = 'idle';
+      if (ha.enabled) {
+        status = 'active';
+      }
+      if (latestSession) {
+        const ageMinutes = (latestSession.ageMs || Infinity) / (1000 * 60);
+        if (ageMinutes < 5) status = 'busy';
+      }
+
+      const meta = AGENT_META[agentId] || { name: agentId, role: 'Agent', emoji: '🤖' };
+      const agentSessions = sessionsData?.sessions?.filter(s => s.agentId === agentId) || [];
+
+      return {
+        id: agentId,
+        agentId,
+        name: meta.name,
+        role: meta.role,
+        emoji: meta.emoji,
+        enabled: ha.enabled,
+        workspace,
+        model: latestSession?.model || config.agents?.defaults?.model?.primary || null,
+        status,
+        lastActivity: latestSession?.updatedAt || null,
+        totalTokens: latestSession?.totalTokens || 0,
+        sessionCount: agentSessions.length,
+      };
+    });
+
+    res.json(agents);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list agents', details: err.message });
+  }
+});
+
+// GET /api/agents/:id/sessions — Sessions for a specific agent
+app.get('/api/agents/:id/sessions', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const data = await cachedExec(
+      'openclaw', ['sessions', '--agent', id, '--json'], `sessions-${id}`
+    );
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get sessions', details: err.message });
+  }
+});
+
+// GET /api/costs/summary — Cost summary with breakdowns
+app.get('/api/costs/summary', async (req, res) => {
+  try {
+    const runs = await readAllCronRuns();
+    const summary = computeCostSummary(runs);
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to compute costs', details: err.message });
+  }
+});
+
+// GET /api/costs/by-agent — Per-agent cost breakdown
+app.get('/api/costs/by-agent', async (req, res) => {
+  try {
+    const runs = await readAllCronRuns();
+    const now = Date.now();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayMs = startOfToday.getTime();
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const monthMs = startOfMonth.getTime();
+
+    const agentCosts = {};
+
+    for (const run of runs) {
+      if (run.action !== 'finished') continue;
+      const cost = calculateRunCost(run);
+      if (cost === 0) continue;
+
+      let agentId = 'unknown';
+      if (run.sessionKey) {
+        const parts = run.sessionKey.split(':');
+        if (parts.length >= 2) agentId = parts[1];
+      }
+
+      if (!agentCosts[agentId]) {
+        agentCosts[agentId] = {
+          agentId,
+          totalCost: 0,
+          todayCost: 0,
+          monthCost: 0,
+          runCount: 0,
+          lastRun: null,
+          byModel: {},
+        };
+      }
+
+      const ac = agentCosts[agentId];
+      ac.totalCost += cost;
+      ac.runCount += 1;
+      if ((run.ts || 0) >= todayMs) ac.todayCost += cost;
+      if ((run.ts || 0) >= monthMs) ac.monthCost += cost;
+      if (!ac.lastRun || (run.ts || 0) > ac.lastRun) ac.lastRun = run.ts;
+
+      const modelKey = normalizeModelName(run.model);
+      ac.byModel[modelKey] = (ac.byModel[modelKey] || 0) + cost;
+    }
+
+    res.json(Object.values(agentCosts));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to compute agent costs', details: err.message });
+  }
+});
+
+// GET /api/cron/jobs — All cron jobs with last run status
+app.get('/api/cron/jobs', async (req, res) => {
+  try {
+    const jobsRaw = await readFile(CRON_JOBS_FILE, 'utf-8');
+    const jobsData = JSON.parse(jobsRaw);
+    const jobs = jobsData.jobs || [];
+
+    // For each job, read the last line of its run file
+    const enrichedJobs = await Promise.all(
+      jobs.map(async (job) => {
+        let lastRun = null;
+        const runFile = join(CRON_RUNS_DIR, `${job.id}.jsonl`);
+        try {
+          const content = await readFile(runFile, 'utf-8');
+          const lines = content.split('\n').filter(l => l.trim());
+          if (lines.length > 0) {
+            lastRun = JSON.parse(lines[lines.length - 1]);
+          }
+        } catch { /* run file might not exist */ }
+
+        return {
+          id: job.id,
+          agentId: job.agentId,
+          name: job.name,
+          description: job.description,
+          enabled: job.enabled,
+          schedule: job.schedule,
+          delivery: job.delivery,
+          state: job.state,
+          lastRun,
+        };
+      })
+    );
+
+    res.json(enrichedJobs);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read cron jobs', details: err.message });
+  }
+});
+
+// GET /api/alerts — Active alerts
+app.get('/api/alerts', async (req, res) => {
+  try {
+    const alerts = await generateAlerts();
+    res.json(alerts);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to generate alerts', details: err.message });
+  }
+});
+
+// GET /api/events — SSE endpoint for real-time updates
+app.get('/api/events', (req, res) => {
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  // Send initial connection event
+  res.write(`data: ${JSON.stringify({ type: 'connected', ts: Date.now() })}\n\n`);
+
+  // Add client to SSE set
+  sseClients.add(res);
+
+  // Remove on disconnect
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
+
+// SSE polling cycle — runs every 10 seconds
+let sseInterval = null;
+
+async function ssePollCycle() {
+  if (sseClients.size === 0) return;
+
+  try {
+    // 1. Get agent/session data
+    let agentsPayload = [];
+    try {
+      const sessionsData = await cachedExec(
+        'openclaw', ['sessions', '--all-agents', '--json'], 'sessions-all'
+      );
+      if (sessionsData?.sessions) {
+        // Group by agent
+        const byAgent = {};
+        for (const s of sessionsData.sessions) {
+          const aid = s.agentId || 'unknown';
+          if (!byAgent[aid]) byAgent[aid] = [];
+          byAgent[aid].push(s);
+        }
+        agentsPayload = Object.entries(byAgent).map(([agentId, sessions]) => ({
+          agentId,
+          sessionCount: sessions.length,
+          latestSession: sessions.reduce((a, b) =>
+            (a.updatedAt || 0) > (b.updatedAt || 0) ? a : b
+          ),
+        }));
+      }
+    } catch { /* ignore */ }
+
+    // 2. Calculate costs
+    let costsPayload = {};
+    try {
+      const runs = await readAllCronRuns();
+      costsPayload = computeCostSummary(runs);
+    } catch { /* ignore */ }
+
+    // 3. Generate alerts
+    let alertsPayload = [];
+    try {
+      alertsPayload = await generateAlerts();
+    } catch { /* ignore */ }
+
+    // Send to all connected clients
+    const events = [
+      { type: 'agents', data: agentsPayload },
+      { type: 'costs', data: costsPayload },
+      { type: 'alerts', data: alertsPayload },
+    ];
+
+    for (const client of sseClients) {
+      try {
+        for (const event of events) {
+          client.write(`data: ${JSON.stringify(event)}\n\n`);
+        }
+      } catch {
+        // Client probably disconnected
+        sseClients.delete(client);
+      }
+    }
+  } catch (err) {
+    console.error('SSE poll cycle error:', err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -350,187 +809,42 @@ function formatSize(bytes) {
 
 function formatDate(dateStr) {
   const date = new Date(dateStr + 'T12:00:00');
-  return date.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// START SERVER
+// ═══════════════════════════════════════════════════════════════════════════════
+
 const PORT = process.env.API_PORT || 7101;
 app.listen(PORT, () => {
-  console.log(`NetSmith OS API server running on port ${PORT}`);
+  console.log(`NetSmithOS API server running on port ${PORT}`);
+  console.log(`Loaded pricing for ${Object.keys(PRICING).length} models`);
+
+  // Start SSE polling
+  sseInterval = setInterval(ssePollCycle, 10_000);
+  console.log('SSE polling started (10s interval)');
 });
 
-// Get model fleet — built from agent assignments + available API keys
-app.get('/api/models', async (req, res) => {
-  try {
-    const config = JSON.parse(await readFile(OPENCLAW_CONFIG, 'utf-8'));
-
-    // Detect available API keys from .env
-    const envPath = join(HOME, 'steelclaw', '.env');
-    let envContent = '';
-    try { envContent = await readFile(envPath, 'utf-8'); } catch {}
-
-    const keys = {
-      anthropic: /ANTHROPIC_API_KEY\s*=\s*\S+/.test(envContent),
-      openai:    /OPENAI_API_KEY\s*=\s*\S+/.test(envContent),
-      google:    /GEMINI_API_KEY\s*=\s*\S+/.test(envContent),
-      openrouter: /OPENROUTER_API_KEY\s*=\s*\S+/.test(envContent),
-    };
-
-    // Build model → agents map from openclaw config
-    const defaultModel = config.agents?.defaults?.model?.primary || 'anthropic/claude-opus-4-5';
-    const modelAgents = {};
-    for (const agent of (config.agents?.list || [])) {
-      const model = agent.model || defaultModel;
-      if (!modelAgents[model]) modelAgents[model] = [];
-      modelAgents[model].push(agent.id || agent.name || 'main');
-    }
-
-    // Active models (actually assigned to agents)
-    const fleet = Object.entries(modelAgents).map(([modelName, agents]) => ({
-      name: modelName,
-      shortName: modelName.split('/').slice(-1)[0],
-      purpose: modelPurpose(modelName),
-      provider: modelProvider(modelName),
-      authMethod: modelAuth(modelName, keys),
-      status: 'Active',
-      agents,
-      agentCount: agents.length,
-      cost: modelCost(modelName),
-      type: 'LLM',
-    }));
-
-    // Available models from provider keys (not yet assigned to any agent)
-    const usedModels = new Set(fleet.map(m => m.name));
-
-    const addAvailable = (name, purpose, auth, type = 'LLM') => {
-      if (!usedModels.has(name)) {
-        fleet.push({
-          name,
-          shortName: name.split('/').slice(-1)[0],
-          purpose,
-          provider: modelProvider(name),
-          authMethod: auth,
-          status: 'Available',
-          agents: [],
-          agentCount: 0,
-          cost: modelCost(name),
-          type,
-        });
-      }
-    };
-
-    if (keys.anthropic) {
-      addAvailable('anthropic/claude-sonnet-4-5', 'Balanced speed & capability', 'API key');
-      addAvailable('anthropic/claude-3-5-haiku-latest', 'Fast, lightweight tasks', 'API key');
-    }
-    if (keys.openai) {
-      addAvailable('openai/gpt-4o', 'Multimodal reasoning & vision', 'API key');
-      addAvailable('openai/gpt-4o-mini', 'Fast, cost-effective tasks', 'API key');
-    }
-    if (keys.google) {
-      addAvailable('google/gemini-2.5-pro', 'Long context & deep reasoning', 'API key');
-      addAvailable('google/gemini-2.5-flash', 'Fast Google reasoning', 'API key');
-    }
-    if (keys.openrouter) {
-      addAvailable('openrouter/auto', 'Auto-route to best model', 'OpenRouter');
-    }
-
-
-    // ── Image generation models ──────────────────────────────────────────────
-    if (keys.google) {
-      addAvailable('google/gemini-3-pro-image', 'Image generation & editing (Nano Banana Pro)', 'API key', 'Image');
-      addAvailable('google/gemini-2.5-flash-image', 'Fast image understanding & gen', 'API key', 'Image');
-    }
-    if (keys.openai) {
-      addAvailable('openai/dall-e-3', 'High-quality text-to-image', 'API key', 'Image');
-    }
-
-    // ── Video generation models ───────────────────────────────────────────────
-    if (keys.openai) {
-      addAvailable('openai/sora-2', 'Text-to-video generation', 'API key', 'Video');
-      addAvailable('openai/sora-2-pro', 'High-quality video generation', 'API key', 'Video');
-    }
-
-    // ── Audio / voice models ──────────────────────────────────────────────────
-    if (keys.openai) {
-      addAvailable('openai/whisper-1', 'Speech-to-text transcription', 'API key', 'Audio');
-      addAvailable('openai/tts-1', 'Text-to-speech synthesis', 'API key', 'Audio');
-      addAvailable('openai/tts-1-hd', 'High-fidelity TTS', 'API key', 'Audio');
-      addAvailable('openai/gpt-4o-audio-preview', 'Audio reasoning & generation', 'API key', 'Audio');
-    }
-
-    // ── Music (Locked — needs separate key) ──────────────────────────────────
-    fleet.push({
-      name: 'suno/v4', shortName: 'suno-v4',
-      purpose: 'AI music generation', provider: 'suno',
-      authMethod: 'SUNO_API_KEY (not set)', status: 'Locked',
-      agents: [], agentCount: 0, cost: '$0.01/song', type: 'Music'
-    });
-
-    res.json({ fleet, keys });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down...');
+  if (sseInterval) clearInterval(sseInterval);
+  for (const client of sseClients) {
+    try { client.end(); } catch { /* ignore */ }
   }
+  process.exit(0);
 });
 
-function modelProvider(name) {
-  if (name.startsWith('openrouter/')) return 'openrouter';
-  if (name.startsWith('suno/')) return 'suno';
-  const p = name.split('/')[0];
-  return p || 'unknown';
-}
-
-function modelAuth(name, keys) {
-  if (name.startsWith('openrouter/')) return 'OpenRouter';
-  if (name.startsWith('anthropic/')) return 'API key';
-  if (name.startsWith('openai/')) return 'API key';
-  if (name.startsWith('google/')) return 'API key';
-  return 'API key';
-}
-
-function modelPurpose(name) {
-  if (name.includes('opus')) return 'Primary brain — complex reasoning';
-  if (name.includes('sonnet')) return 'Balanced speed & capability';
-  if (name.includes('haiku')) return 'Fast, lightweight tasks';
-  if (name.includes('gpt-4o-mini')) return 'Fast, cost-effective tasks';
-  if (name.includes('gpt-4o')) return 'Multimodal reasoning & vision';
-  if (name.includes('gemini') && name.includes('flash')) return 'Fast iteration & community';
-  if (name.includes('gemini') && name.includes('pro')) return 'Long context & deep reasoning';
-  if (name === 'openrouter/auto') return 'Auto-route to best model';
-  if (name.includes('dall-e-3')) return 'High-quality text-to-image generation';
-  if (name.includes('gemini-3-pro-image')) return 'Image generation & editing (Nano Banana Pro)';
-  if (name.includes('gemini-2.5-flash-image')) return 'Fast image understanding & generation';
-  if (name.includes('sora-2-pro')) return 'High-quality video generation';
-  if (name.includes('sora-2')) return 'Text-to-video generation';
-  if (name.includes('whisper')) return 'Speech-to-text transcription (STT)';
-  if (name.includes('tts-1-hd')) return 'High-fidelity text-to-speech synthesis';
-  if (name.includes('tts-1')) return 'Text-to-speech synthesis';
-  if (name.includes('gpt-4o-audio')) return 'Audio reasoning & generation';
-  if (name === 'suno/v4') return 'AI music generation';
-  return 'General purpose';
-}
-
-function modelCost(name) {
-  if (name.includes("opus-4-5")) return "$15/1M in · $75/1M out";
-  if (name.includes("claude-sonnet-4-5")) return "$3/1M in · $15/1M out";
-  if (name.includes("haiku")) return "$0.25/1M in · $1.25/1M out";
-  if (name.includes("gpt-4o-mini")) return "$0.15/1M in · $0.60/1M out";
-  if (name.includes("gpt-4o")) return "$2.50/1M in · $10/1M out";
-  if (name.includes("gemini-2.5-flash")) return "$0.075/1M in · $0.30/1M out";
-  if (name.includes("gemini-2.5-pro")) return "$1.25/1M in · $5/1M out";
-  if (name.includes("openrouter/auto")) return "varies";
-  if (name.includes("dall-e-3")) return "$0.04/image";
-  if (name.includes("gemini-3-pro-image")) return "$0.003/image";
-  if (name.includes("gemini-2.5-flash-image")) return "$0.0005/image";
-  if (name.includes("sora-2-pro")) return "$0.165/s video";
-  if (name.includes("sora-2")) return "$0.11/s video";
-  if (name.includes("whisper")) return "$0.006/min";
-  if (name.includes("tts-1-hd")) return "$0.030/1K chars";
-  if (name.includes("tts-1")) return "$0.015/1K chars";
-  if (name.includes("gpt-4o-audio")) return "$0.10/1M in · $0.20/1M out";
-  if (name === "suno/v4") return "$0.01/song";
-  return "varies";
-}
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down...');
+  if (sseInterval) clearInterval(sseInterval);
+  for (const client of sseClients) {
+    try { client.end(); } catch { /* ignore */ }
+  }
+  process.exit(0);
+});

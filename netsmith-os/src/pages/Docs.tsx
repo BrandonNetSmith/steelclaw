@@ -12,9 +12,9 @@ const docs: DocSection[] = [
   {
     id: 'overview',
     title: 'Overview',
-    content: `# What is NetSmith OS?
+    content: `# What is NetSmithOS?
 
-NetSmith OS is the operational dashboard and control center for SteelClaw's AI agent infrastructure. It provides a unified interface for managing, monitoring, and coordinating multiple AI agents working together as a virtual executive team.
+NetSmithOS is the operational dashboard and control center for SteelClaw's AI agent infrastructure. It provides a unified interface for managing, monitoring, and coordinating multiple AI agents working together as a virtual executive team.
 
 ## Key Features
 
@@ -26,7 +26,7 @@ NetSmith OS is the operational dashboard and control center for SteelClaw's AI a
 
 ## Architecture
 
-NetSmith OS runs as a local web application that reads directly from the filesystem and OpenClaw configuration files. There's no backend database — everything operates on your existing agent infrastructure.
+NetSmithOS runs as a local web application that reads directly from the filesystem and OpenClaw configuration files. There's no backend database — everything operates on your existing agent infrastructure.
 
 ### Tech Stack
 - **Frontend**: React + TypeScript + Vite
@@ -67,7 +67,7 @@ Each configured model appears as a card showing:
 - Model name and purpose
 - Authentication method
 - Active/Inactive status
-- Cost per 1K tokens
+- Cost per 1M tokens
 - Token usage and session count
 
 ## Active Sessions
@@ -93,9 +93,9 @@ Visualize the agent team hierarchy and status.
 
 The org chart shows the reporting structure:
 - **CEO**: Brandon (Human) — Ultimate authority
-- **COO**: Tina — Operations lead, reports to CEO
+- **COO**: Tim — Operations lead, reports to CEO
 - **C-Suite**: Future executives (CTO, CMO, CRO)
-- **Staff**: Direct reports like Calvin (EA)
+- **Staff**: Direct reports like Calvin (Community)
 
 ## Agent Cards
 
@@ -128,7 +128,7 @@ Browse and edit agent workspace files.
 ## Agent Workspaces
 
 Each agent has a dedicated workspace directory:
-- **Tina**: \`~/steelclaw/workspace/\`
+- **Tim**: \`~/steelclaw/workspace/\`
 - **Calvin**: \`~/steelclaw/workspace-calvin/\`
 
 ## Core Files
@@ -311,7 +311,7 @@ Partnerships can be tracked in:
 
 - **CMO (Gary)**: Marketing partnerships, co-marketing
 - **CRO (Warren)**: Revenue partnerships, sales channels
-- **COO (Tina)**: Operational partnerships, integrations
+- **COO (Tim)**: Operational partnerships, integrations
 
 ## Templates
 

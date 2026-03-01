@@ -15,72 +15,49 @@ interface Agent {
 const orgData: Agent = {
   name: 'Brandon',
   role: 'CEO',
-  title: 'Human · Vision & Strategy',
+  title: 'Human Overlord',
   status: 'Active',
   avatar: '👤',
   reports: [
     {
-      name: 'Tina',
+      name: 'Tim',
       role: 'COO',
-      title: 'Research · Delegation · Execution · Orchestration',
-      model: 'Claude Opus 4.5',
+      title: 'Chief Operating Officer',
+      model: 'Gemini 2.5 Flash',
       status: 'Active',
       avatar: '🧠',
       reports: [
         {
-          name: 'Elon',
-          role: 'CTO',
-          title: 'Backend · Infrastructure · Security',
-          model: 'Claude Opus 4.5',
+          name: 'Calvin',
+          role: 'Community Agent',
+          title: 'Discord Community Support',
+          model: 'Gemini 2.5 Flash',
           status: 'Active',
-          avatar: '🔨',
-        },
-        {
-          name: 'Gary',
-          role: 'CMO',
-          title: 'Content · Marketing · Distribution',
-          model: 'Claude Opus 4.5',
-          status: 'Active',
-          avatar: '📣',
-          reports: [
-            {
-              name: 'Noah',
-              role: 'Social Media Manager',
-              title: 'Social Media Strategy & Content',
-              model: 'Claude Opus 4.5',
-              status: 'Active',
-              avatar: '📱',
-            },
-          ]
-        },
-        {
-          name: 'Warren',
-          role: 'CRO',
-          title: 'Revenue · Community · Partnerships',
-          model: 'Claude Opus 4.5',
-          status: 'Active',
-          avatar: '💰',
-          reports: [
-            {
-              name: 'Calvin',
-              role: 'Community Agent',
-              title: 'Discord Community Support',
-              model: 'Gemini Flash 2.0',
-              status: 'Active',
-              avatar: '🦞',
-            },
-          ]
-        },
-        {
-          name: 'Steve',
-          role: 'CPO',
-          title: 'Product Vision · UX · Roadmap',
-          model: 'Claude Opus 4.5',
-          status: 'Active',
-          avatar: '🎨',
-        },
+          avatar: '🦞'
+        }
       ]
     },
+    {
+      name: 'Elon',
+      role: 'CTO',
+      title: 'Chief Technology Officer',
+      status: 'Future',
+      avatar: '🔨'
+    },
+    {
+      name: 'Gary',
+      role: 'CMO',
+      title: 'Chief Marketing Officer',
+      status: 'Future',
+      avatar: '📣'
+    },
+    {
+      name: 'Warren',
+      role: 'CRO',
+      title: 'Chief Revenue Officer',
+      status: 'Future',
+      avatar: '💰'
+    }
   ]
 }
 
@@ -113,10 +90,10 @@ interface AgentCardProps {
 
 function AgentCard({ agent, expanded, onToggle, hasChildren }: AgentCardProps) {
   return (
-    <div
-      className="agent-card"
-      style={{
-        width: '200px',
+    <div 
+      className="agent-card" 
+      style={{ 
+        width: '200px', 
         textAlign: 'center',
         cursor: hasChildren ? 'pointer' : 'default'
       }}
@@ -144,13 +121,8 @@ function AgentCard({ agent, expanded, onToggle, hasChildren }: AgentCardProps) {
   )
 }
 
-const CARD_WIDTH = 200
-const CARD_GAP = 24
-const CONNECTOR = 'var(--border-color)'
-const STEM_H = 24
-
 export default function OrgChart() {
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['Brandon', 'Tina']))
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['Brandon', 'Tim']))
 
   const toggleNode = (name: string) => {
     const next = new Set(expandedNodes)
@@ -176,50 +148,37 @@ export default function OrgChart() {
     setExpandedNodes(new Set())
   }
 
-  const renderAgent = (agent: Agent, withTopConnector = false): JSX.Element => {
-    const hasChildren = !!(agent.reports && agent.reports.length > 0)
+  const renderAgent = (agent: Agent, level: number = 0): JSX.Element => {
+    const hasChildren = agent.reports && agent.reports.length > 0
     const isExpanded = expandedNodes.has(agent.name)
-    const isSingleChild = agent.reports?.length === 1
 
     return (
       <div key={agent.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-
-        {/* Vertical drop from parent horizontal bar down to this card */}
-        {withTopConnector && (
-          <div style={{ width: '2px', height: `${STEM_H}px`, background: CONNECTOR }} />
-        )}
-
-        <AgentCard
-          agent={agent}
+        <AgentCard 
+          agent={agent} 
           expanded={isExpanded}
           onToggle={hasChildren ? () => toggleNode(agent.name) : undefined}
           hasChildren={hasChildren}
         />
-
         {hasChildren && isExpanded && (
-          <>
-            {/* Vertical stem from card down to children area */}
-            <div style={{ width: '2px', height: `${STEM_H}px`, background: CONNECTOR }} />
-
-            {isSingleChild ? (
-              /* Single child — skip horizontal bar, render centred */
-              renderAgent(agent.reports![0], false)
-            ) : (
-              /* Multiple children — horizontal bar spanning child centres */
-              <div style={{ display: 'flex', gap: `${CARD_GAP}px`, position: 'relative' }}>
-                {/* Bar from centre of first child to centre of last child */}
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: `${CARD_WIDTH / 2}px`,
-                  right: `${CARD_WIDTH / 2}px`,
-                  height: '2px',
-                  background: CONNECTOR,
-                }} />
-                {agent.reports!.map(report => renderAgent(report, true))}
-              </div>
-            )}
-          </>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            gap: '24px', 
+            marginTop: '24px',
+            position: 'relative',
+            paddingTop: '16px'
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: '50%',
+              width: '2px',
+              height: '16px',
+              background: 'var(--border-color)'
+            }} />
+            {agent.reports!.map(report => renderAgent(report, level + 1))}
+          </div>
         )}
       </div>
     )
@@ -251,7 +210,7 @@ export default function OrgChart() {
         <button className="btn" onClick={collapseAll}>Collapse All</button>
       </div>
 
-      <div className="org-chart" style={{ overflowX: 'auto', paddingBottom: '32px' }}>
+      <div className="org-chart">
         {renderAgent(orgData)}
       </div>
 
