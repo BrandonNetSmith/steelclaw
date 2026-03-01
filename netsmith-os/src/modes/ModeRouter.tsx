@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BridgeView } from "../bridge/BridgeView";
+import { DrillView } from "../drill/DrillView";
 import type { AppMode } from "../api/types";
 
 export function ModeRouter() {
@@ -25,15 +26,7 @@ export function ModeRouter() {
         />
       );
     case "drill":
-      return (
-        <div className="drill-placeholder">
-          <button className="back-btn" onClick={handleBack}>
-            &larr; Back to Bridge
-          </button>
-          <h2>Drill Mode: {drillAgent}</h2>
-          <p>Coming in Phase 3</p>
-        </div>
-      );
+      return <DrillView agentId={drillAgent!} onBack={handleBack} />;
     case "forge":
       return (
         <div className="forge-placeholder">

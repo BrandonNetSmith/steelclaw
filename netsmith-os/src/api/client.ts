@@ -18,4 +18,11 @@ export const api = {
   getAlerts: () => fetchJSON<Alert[]>("/alerts"),
   getWorkspaceFiles: (agent: string) => fetchJSON<{ agent: string; path: string; files: any[] }>(`/workspace/${agent}/files`),
   getWorkspaceFile: (agent: string, path: string) => fetchJSON<{ content: string; path: string }>(`/workspace/${agent}/file?path=${encodeURIComponent(path)}`),
+
+  // Drill Mode API methods
+  getAgentMemory: (id: string) => fetchJSON<{ filename: string; date: string; preview: string }[]>(`/agents/${id}/memory`),
+  getAgentMemoryFile: (id: string, filename: string) => fetchJSON<{ filename: string; content: string }>(`/agents/${id}/memory/${encodeURIComponent(filename)}`),
+  getAgentCosts: (id: string) => fetchJSON<{ today: number; thisWeek: number; thisMonth: number; total: number; byModel: Record<string, number>; runs: any[] }>(`/agents/${id}/costs`),
+  getAgentCron: (id: string) => fetchJSON<CronJob[]>(`/agents/${id}/cron`),
+  getAgentWorkspace: (id: string) => fetchJSON<{ agent: string; tree: any }>(`/agents/${id}/workspace`),
 };

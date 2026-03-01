@@ -797,6 +797,367 @@ async function ssePollCycle() {
   }
 }
 
+
+// ======================================================================
+// DRILL MODE ENDPOINTS
+// ======================================================================
+
+// GET /api/agents/:id/memory - List memory entries for an agent
+app.get('/api/agents/:id/memory', async (req, res) => {
+  const { id } = req.params;
+  const workspacePath = WORKSPACES[id.toLowerCase()];
+  if (!workspacePath) {
+    return res.status(404).json({ error: 'Unknown agent' });
+  }
+
+  const memoryDir = join(workspacePath, 'memory');
+  try {
+    if (!existsSync(memoryDir)) {
+      return res.json([]);
+    }
+    const entries = await readdir(memoryDir, { withFileTypes: true });
+    const memoryFiles = [];
+
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.md')) {
+        const filePath = join(memoryDir, entry.name);
+        const raw = await readFile(filePath, 'utf-8');
+        const preview = raw.substring(0, 500);
+
+        // Try to extract a date from the filename (e.g. 2026-02-28-topic.md)
+        const dateMatch = entry.name.match(/^(\d{4}-\d{2}-\d{2})/);
+        let date = null;
+        if (dateMatch) {
+          date = dateMatch[1];
+        } else {
+          // Fallback: use file mtime
+          const stats = await stat(filePath);
+          date = stats.mtime.toISOString().split('T')[0];
+        }
+
+        memoryFiles.push({
+          filename: entry.name,
+          date,
+          content: preview,
+          fullPath: filePath,
+        });
+      }
+    }
+
+    // Sort by date descending (newest first)
+    memoryFiles.sort((a, b) => b.date.localeCompare(a.date));
+    res.json(memoryFiles);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read memory', details: err.message });
+  }
+});
+
+// GET /api/agents/:id/memory/:filename - Read a specific memory file
+app.get('/api/agents/:id/memory/:filename', async (req, res) => {
+  const { id, filename } = req.params;
+  const workspacePath = WORKSPACES[id.toLowerCase()];
+  if (!workspacePath) {
+    return res.status(404).json({ error: 'Unknown agent' });
+  }
+
+  try {
+    const filePath = join(workspacePath, 'memory', filename);
+    const resolvedPath = resolve(filePath);
+    const memoryDir = join(workspacePath, 'memory');
+    if (!resolvedPath.startsWith(memoryDir)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const rawContent = await readFile(resolvedPath, 'utf-8');
+    res.json({ filename, content: rawContent });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read memory file', details: err.message });
+  }
+});
+
+// GET /api/agents/:id/costs - Per-agent cost breakdown
+app.get('/api/agents/:id/costs', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const allRuns = await readAllCronRuns();
+    // Filter runs where sessionKey contains the agent id
+    const agentRuns = allRuns.filter(
+      (r) => r.action === 'finished' && r.sessionKey && r.sessionKey.includes('agent:' + id + ':')
+    );
+
+    const now = Date.now();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayMs = startOfToday.getTime();
+
+    const startOfWeek = new Date();
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const weekMs = startOfWeek.getTime();
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const monthMs = startOfMonth.getTime();
+
+    let today = 0;
+    let thisWeek = 0;
+    let thisMonth = 0;
+    let total = 0;
+    const byModel = {};
+    const recentRuns = [];
+
+    for (const run of agentRuns) {
+      const cost = calculateRunCost(run);
+      const ts = run.ts || 0;
+      total += cost;
+      if (ts >= todayMs) today += cost;
+      if (ts >= weekMs) thisWeek += cost;
+      if (ts >= monthMs) thisMonth += cost;
+
+      const modelKey = normalizeModelName(run.model);
+      byModel[modelKey] = (byModel[modelKey] || 0) + cost;
+
+      recentRuns.push({
+        ts: run.ts,
+        model: normalizeModelName(run.model),
+        cost,
+        durationMs: run.durationMs || 0,
+        status: run.status || 'unknown',
+      });
+    }
+
+    // Sort runs by timestamp descending, take last 20
+    recentRuns.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const runs = recentRuns.slice(0, 20);
+
+    res.json({ today, thisWeek, thisMonth, total, byModel, runs });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to compute agent costs', details: err.message });
+  }
+});
+
+// GET /api/agents/:id/cron - Cron jobs for a specific agent
+app.get('/api/agents/:id/cron', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const jobsRaw = await readFile(CRON_JOBS_FILE, 'utf-8');
+    const jobsData = JSON.parse(jobsRaw);
+    const allJobs = jobsData.jobs || [];
+
+    // Filter jobs by agentId
+    const agentJobs = allJobs.filter((j) => j.agentId === id);
+
+    // Enrich each job with its last run data
+    const enrichedJobs = await Promise.all(
+      agentJobs.map(async (job) => {
+        let lastRun = null;
+        const runFile = join(CRON_RUNS_DIR, job.id + '.jsonl');
+        try {
+          const rawContent = await readFile(runFile, 'utf-8');
+          const lines = rawContent.split('\n').filter((l) => l.trim());
+          if (lines.length > 0) {
+            lastRun = JSON.parse(lines[lines.length - 1]);
+          }
+        } catch {
+          /* run file might not exist */
+        }
+
+        return {
+          id: job.id,
+          agentId: job.agentId,
+          name: job.name,
+          description: job.description,
+          enabled: job.enabled,
+          schedule: job.schedule,
+          delivery: job.delivery,
+          state: job.state,
+          lastRun,
+        };
+      })
+    );
+
+    res.json(enrichedJobs);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read cron jobs', details: err.message });
+  }
+});
+
+// GET /api/agents/:id/workspace - Full workspace file tree (max depth 3)
+app.get('/api/agents/:id/workspace', async (req, res) => {
+  const { id } = req.params;
+  const workspacePath = WORKSPACES[id.toLowerCase()];
+  if (!workspacePath) {
+    return res.status(404).json({ error: 'Unknown agent' });
+  }
+
+  async function buildTree(dirPath, currentDepth, maxDepth) {
+    if (currentDepth > maxDepth) return [];
+    const children = [];
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        // Skip hidden files/dirs
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          const subChildren = await buildTree(fullPath, currentDepth + 1, maxDepth);
+          children.push({
+            name: entry.name,
+            type: 'dir',
+            children: subChildren,
+          });
+        } else if (entry.isFile()) {
+          try {
+            const stats = await stat(fullPath);
+            children.push({
+              name: entry.name,
+              type: 'file',
+              size: stats.size,
+            });
+          } catch {
+            children.push({
+              name: entry.name,
+              type: 'file',
+              size: 0,
+            });
+          }
+        }
+      }
+    } catch {
+      /* directory might not be readable */
+    }
+    return children;
+  }
+
+  try {
+    const tree = await buildTree(workspacePath, 1, 3);
+    res.json({
+      agent: id,
+      path: workspacePath,
+      tree,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to build workspace tree', details: err.message });
+  }
+});
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORGE ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/forge/roles — Available C-suite roles
+app.get("/api/forge/roles", async (req, res) => {
+  try {
+    const data = await readFile(join(__dirname, "src", "server", "data", "roles.json"), "utf-8");
+    res.json(JSON.parse(data));
+  } catch (err) {
+    res.status(500).json({ error: "Failed to read roles", details: err.message });
+  }
+});
+
+// GET /api/forge/archetypes — Leadership archetypes by role
+app.get("/api/forge/archetypes", async (req, res) => {
+  try {
+    const data = await readFile(join(__dirname, "src", "server", "data", "archetypes.json"), "utf-8");
+    res.json(JSON.parse(data));
+  } catch (err) {
+    res.status(500).json({ error: "Failed to read archetypes", details: err.message });
+  }
+});
+
+// GET /api/forge/archetypes/:roleId — Archetypes for a specific role
+app.get("/api/forge/archetypes/:roleId", async (req, res) => {
+  try {
+    const data = await readFile(join(__dirname, "src", "server", "data", "archetypes.json"), "utf-8");
+    const allArchetypes = JSON.parse(data);
+    const roleArchetypes = allArchetypes[req.params.roleId];
+    if (!roleArchetypes) {
+      return res.status(404).json({ error: "Unknown role" });
+    }
+    res.json(roleArchetypes);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to read archetypes", details: err.message });
+  }
+});
+
+// GET /api/forge/traits — Trait descriptor data
+app.get("/api/forge/traits", async (req, res) => {
+  try {
+    const data = await readFile(join(__dirname, "src", "server", "data", "trait-descriptors.json"), "utf-8");
+    res.json(JSON.parse(data));
+  } catch (err) {
+    res.status(500).json({ error: "Failed to read traits", details: err.message });
+  }
+});
+
+// POST /api/forge/preview-soul — Preview generated SOUL.md from wizard inputs
+app.post("/api/forge/preview-soul", async (req, res) => {
+  try {
+    const { agentName, roleId, archetypeId, traits, companyName } = req.body;
+    
+    // Load template and data
+    const [templateData, archetypeData, traitData, roleData] = await Promise.all([
+      readFile(join(__dirname, "src", "server", "data", "templates.json"), "utf-8"),
+      readFile(join(__dirname, "src", "server", "data", "archetypes.json"), "utf-8"),
+      readFile(join(__dirname, "src", "server", "data", "trait-descriptors.json"), "utf-8"),
+      readFile(join(__dirname, "src", "server", "data", "roles.json"), "utf-8"),
+    ]);
+    
+    const templates = JSON.parse(templateData);
+    const archetypes = JSON.parse(archetypeData);
+    const traitDescriptors = JSON.parse(traitData);
+    const roles = JSON.parse(roleData);
+    
+    const role = roles.find(r => r.id === roleId);
+    const archetype = (archetypes[roleId] || []).find(a => a.id === archetypeId);
+    
+    if (!role || !archetype) {
+      return res.status(400).json({ error: "Invalid role or archetype" });
+    }
+    
+    // Get trait descriptors for the given trait values
+    function getTraitDesc(traitKey, value) {
+      const trait = traitDescriptors[traitKey];
+      if (!trait) return "";
+      for (const [range, desc] of Object.entries(trait.soulDescriptors)) {
+        const [lo, hi] = range.split("-").map(Number);
+        if (value >= lo && value <= hi) return desc;
+      }
+      return "";
+    }
+    
+    // Build SOUL.md from template
+    let soul = templates.soul;
+    const replacements = {
+      "{{agentName}}": agentName || archetype.name,
+      "{{roleTitle}}": role.title,
+      "{{roleShortTitle}}": role.shortTitle,
+      "{{companyName}}": companyName || "NetSmith",
+      "{{archetypeQuote}}": archetype.description,
+      "{{archetypeSoulPrompt}}": archetype.soulPrompt,
+      "{{communicationDescriptor}}": getTraitDesc("communication", traits?.communication ?? 0.5),
+      "{{riskDescriptor}}": getTraitDesc("riskTolerance", traits?.riskTolerance ?? 0.5),
+      "{{decisionDescriptor}}": getTraitDesc("decisionStyle", traits?.decisionStyle ?? 0.5),
+      "{{responsibilities}}": role.coreResponsibilities.map(r => "- " + r).join("\n"),
+      "{{roleDomain}}": role.shortTitle + " operations",
+      "{{delegationRules}}": "Defined by organizational structure.",
+      "{{generatedDate}}": new Date().toISOString().split("T")[0],
+    };
+    
+    for (const [key, val] of Object.entries(replacements)) {
+      soul = soul.split(key).join(val);
+    }
+    
+    res.json({ preview: soul, archetype: archetype.name, role: role.title });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to generate preview", details: err.message });
+  }
+});
+
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════════

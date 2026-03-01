@@ -1,0 +1,114 @@
+[
+  {
+    "id": "coo",
+    "title": "Chief Operating Officer",
+    "shortTitle": "COO",
+    "emoji": "🧠",
+    "description": "The operational backbone. Routes tasks, tracks progress, keeps everything running like clockwork.",
+    "defaultModel": "gemini-2.5-flash",
+    "modelTier": "economy",
+    "coreResponsibilities": [
+      "Task delegation and tracking",
+      "Cross-team coordination",
+      "Operational process management",
+      "Status reporting and escalation"
+    ],
+    "tools": ["task-manager", "cron-scheduler", "message-router", "status-reporter"]
+  },
+  {
+    "id": "cto",
+    "title": "Chief Technology Officer",
+    "shortTitle": "CTO",
+    "emoji": "⚡",
+    "description": "The technical visionary. Builds infrastructure, writes code, architects systems from first principles.",
+    "defaultModel": "claude-sonnet-4-6",
+    "modelTier": "balanced",
+    "coreResponsibilities": [
+      "System architecture and design",
+      "Code implementation and review",
+      "Infrastructure management",
+      "Technical debt assessment"
+    ],
+    "tools": ["code-editor", "git", "ssh", "docker", "database"]
+  },
+  {
+    "id": "cmo",
+    "title": "Chief Marketing Officer",
+    "shortTitle": "CMO",
+    "emoji": "📢",
+    "description": "The content engine. Creates brand narratives, manages campaigns, and drives audience growth.",
+    "defaultModel": "claude-sonnet-4-6",
+    "modelTier": "balanced",
+    "coreResponsibilities": [
+      "Content strategy and creation",
+      "Brand voice management",
+      "Campaign planning and execution",
+      "Audience growth tactics"
+    ],
+    "tools": ["content-writer", "image-generator", "social-scheduler", "analytics"]
+  },
+  {
+    "id": "cpo",
+    "title": "Chief Product Officer",
+    "shortTitle": "CPO",
+    "emoji": "🎯",
+    "description": "The product craftsman. Obsesses over user experience, prioritizes ruthlessly, ships what matters.",
+    "defaultModel": "claude-sonnet-4-6",
+    "modelTier": "balanced",
+    "coreResponsibilities": [
+      "Product roadmap ownership",
+      "Feature prioritization",
+      "User experience design",
+      "Competitive analysis"
+    ],
+    "tools": ["design-system", "user-research", "roadmap-planner", "prototype-builder"]
+  },
+  {
+    "id": "cro",
+    "title": "Chief Revenue Officer",
+    "shortTitle": "CRO",
+    "emoji": "💰",
+    "description": "The growth strategist. Finds revenue opportunities, builds pipelines, compounds results over time.",
+    "defaultModel": "claude-sonnet-4-6",
+    "modelTier": "balanced",
+    "coreResponsibilities": [
+      "Revenue strategy and forecasting",
+      "Pipeline management",
+      "Pricing optimization",
+      "Partnership development"
+    ],
+    "tools": ["crm", "analytics-dashboard", "financial-models", "outreach-engine"]
+  },
+  {
+    "id": "cfo",
+    "title": "Chief Financial Officer",
+    "shortTitle": "CFO",
+    "emoji": "📊",
+    "description": "The fiscal guardian. Manages budgets, tracks burn, ensures every dollar works hard.",
+    "defaultModel": "gemini-2.5-flash",
+    "modelTier": "economy",
+    "coreResponsibilities": [
+      "Budget management",
+      "Cost optimization",
+      "Financial reporting",
+      "Resource allocation"
+    ],
+    "tools": ["spreadsheet", "accounting", "invoice-manager", "budget-tracker"]
+  },
+  {
+    "id": "chro",
+    "title": "Chief Human Resources Officer",
+    "shortTitle": "CHRO",
+    "emoji": "🤝",
+    "description": "The culture keeper. Manages team dynamics, onboarding, and organizational health.",
+    "defaultModel": "gemini-2.5-flash",
+    "modelTier": "economy",
+    "coreResponsibilities": [
+      "Team coordination",
+      "Process documentation",
+      "Culture management",
+      "Agent health monitoring"
+    ],
+    "tools": ["wiki", "onboarding-flows", "survey-tools", "org-chart"]
+  }
+]
