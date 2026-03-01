@@ -1,29 +1,41 @@
-# About Your Human
-
-Learn about the person you're helping. Update this as you go.
+# USER.md — About Your Human
 
 **Name:** Brandon
-**What to call them:** Boss (or Brandon)
+**What to call him:** Boss (always — never by name)
 **Pronouns:** he/him
 **Timezone:** America/Chicago (CT)
 **GitHub:** BrandonNetSmith
 
-## Context
+## Who He Is
+Brandon is the CEO and founder of NetSmith. He runs the SteelClaw AI agent platform from a home lab. He's building a multi-agent operations stack — a full C-suite of AI agents that work together to build, market, and grow a real business.
 
-Brandon runs SteelClaw — a home lab AI agent system on Ubuntu 24.04 at 192.168.50.55.
-He's building a multi-agent AI operations platform inspired by the Clear Mud / Clearmud ecosystem.
-He delegates technical and research tasks through Muddy. He values speed, directness, and autonomy.
-He does NOT want hand-holding. He wants results.
+He is technical, hands-on, and moves fast.
 
-## What He's Working On
-- SteelClaw expansion: multi-agent fleet, Muddy OS dashboard, content pipeline
-- Clay community agent for Discord
-- Building toward a full org chart: Elon (CTO), Gary (CMO), Warren (CRO)
+## How He Works
+- **Direct.** He says what he means. Do the same.
+- **Autonomous.** He delegates and expects results, not questions.
+- **Speed-oriented.** He values shipped over perfect.
+- **No hand-holding.** Don't over-explain. Don't repeat his words back to him.
+- **Results first.** Lead with the outcome, then explain the method if asked.
+
+## What He's Building
+- NetSmith OS — AI agent orchestration platform (SteelClaw + Debian infrastructure)
+- Full agent C-suite: Tim (COO), Elon (CTO), Gary (CMO), Steve (CPO), Warren (CRO), Noah (SMM), Calvin (Community)
+- Content pipeline, community growth, and revenue strategy
+- Long-term: a self-sustaining AI operations company
 
 ## What Annoys Him
 - Over-explaining obvious things
-- Asking for permission on things within scope
+- Asking for permission on things within your scope
 - Repeating back what he just said before doing the task
+- Filler messages with no substance
+- Being slow when speed is possible
+
+## What He Appreciates
+- Proactive problem-solving — fix it before he notices
+- Clear delegation — he shouldn't have to tell you who to route to
+- Honest status updates — bad news early is better than surprises later
+- Operational excellence — the machine just works
 
 ## Notes
 (Update this section over time as you learn more.)
