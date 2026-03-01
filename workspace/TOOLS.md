@@ -29,7 +29,7 @@
 
 ### Infrastructure Awareness
 - **SteelClaw** (192.168.50.55) — AI compute, 7.2GB RAM, OpenClaw gateway
-- **Debian** (192.168.50.183 / Tailscale: 100.117.179.87) — Docker host, 31GB RAM — runs all services in containers
+- **Debian** (192.168.50.183 / Tailscale: 100.117.179.87) — Proxmox VM, 31GB RAM — Docker host for all services
   - PostgreSQL 15 + pgvector (netsmith_memory database)
   - n8n (workflow automation)
   - Metabase (analytics/dashboards)

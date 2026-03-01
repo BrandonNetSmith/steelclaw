@@ -2,7 +2,7 @@
 
 ## Environment
 - Host: SteelClaw (Ubuntu 24.04 Desktop VM on Proxmox, 192.168.50.55)
-- Data Server: Debian Docker host (100.117.179.87) — all services in containers
+- Data Server: Debian VM on Proxmox (100.117.179.87) — Docker host for all services
 - Model: anthropic/claude-sonnet-4-6 (via OpenRouter)
 - Workspace: ~/steelclaw/workspace-elon/
 
@@ -23,7 +23,7 @@
 - **Frontend:** React + TypeScript + Vite
 - **Backend:** Express.js, OpenClaw API
 - **Database:** PostgreSQL 15 + pgvector (Debian), SQLite (OpenClaw memory)
-- **Services:** systemd --user (SteelClaw VM), Docker Compose (Debian host)
+- **Services:** systemd --user (SteelClaw VM), Docker Compose (Debian VM)
 - **CI/CD:** GitHub Actions (future)
 
 ## Your Tools

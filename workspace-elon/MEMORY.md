@@ -12,7 +12,7 @@ Elon — CTO of NetSmith. I own the technical foundation.
 
 ## Infrastructure
 - SteelClaw: 192.168.50.55 (Tailscale: 100.66.7.57), user: brandon, 7.2GB RAM
-- Debian Docker host: 192.168.50.183 (Tailscale: 100.117.179.87), user: brandon, 31GB RAM
+- Debian VM on Proxmox: 192.168.50.183 (Tailscale: 100.117.179.87), user: brandon, 31GB RAM
 - Debian stack: PostgreSQL 15 + pgvector, n8n, Metabase, Odoo, Vaultwarden, Traefik, Cloudflared
 - Memory/semantic recall: OpenAI text-embedding-3-small
 - pgvector database: netsmith_memory (agent_memories table, HNSW index, 1536-dim)

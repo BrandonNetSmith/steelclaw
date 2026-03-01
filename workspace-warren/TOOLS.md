@@ -21,7 +21,7 @@
 - **Session logs** (`session-logs` skill) — review past revenue decisions and partnership conversations
 
 ### Data Infrastructure (via Elon)
-- **PostgreSQL + pgvector** — NetSmith's Docker-hosted data layer (Debian, 100.117.179.87:5432)
+- **PostgreSQL + pgvector** — NetSmith's Proxmox-hosted data layer (Debian VM, 100.117.179.87:5432)
 - **Metabase** — dashboards and analytics (when configured)
 - **n8n** — automation workflows for revenue operations
 - For analytics/reporting needs, spec requirements and route to Elon for implementation

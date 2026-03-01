@@ -13,7 +13,7 @@ My model: google/gemini-2.5-flash-preview
 - 7 agents: Tim (main), Elon, Gary, Noah, Warren, Steve, Calvin
 - GitHub: BrandonNetSmith/NetSmithOS (gh CLI authenticated)
 
-## Debian Docker Host (192.168.50.183 / Tailscale: 100.117.179.87)
+## Debian VM on Proxmox (192.168.50.183 / Tailscale: 100.117.179.87)
 - PostgreSQL 15 + pgvector (netsmith_memory database, agent_memories table)
 - n8n, Metabase, Odoo, Vaultwarden, Traefik, Cloudflared
 - 31GB RAM, 192GB disk — all services run in Docker containers
