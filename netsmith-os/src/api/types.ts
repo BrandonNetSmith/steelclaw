@@ -51,7 +51,7 @@ export interface CronJob {
   name: string;
   description: string;
   enabled: boolean;
-  schedule: string;
+  schedule: string | { kind: string; expr: string; tz: string };
   delivery: any;
   state: any;
   lastRun: {
@@ -71,4 +71,38 @@ export interface Alert {
   jobId?: string;
 }
 
-export type AppMode = "bridge" | "drill" | "forge";
+export type AppMode = "bridge" | "drill" | "forge" | "health" | "org" | "tasks" | "standup" | "workspaces" | "docs";
+
+export interface ModelInfo {
+  key: string;
+  name: string;
+  provider: string;
+  contextWindow: number | null;
+  reasoning: boolean;
+}
+
+export interface AgentConfig {
+  id: string;
+  model: string | null;
+  thinkingLevel: string;
+  heartbeat: any;
+  workspace: string | null;
+  identity: any;
+}
+
+export interface CronCreateInput {
+  agentId: string;
+  name: string;
+  message: string;
+  schedule?: {
+    cron?: string;
+    every?: string;
+    at?: string;
+    tz?: string;
+  };
+  announce?: boolean;
+  channel?: string;
+  session?: string;
+  thinking?: string;
+  model?: string;
+}
