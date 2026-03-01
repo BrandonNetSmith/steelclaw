@@ -1,7 +1,7 @@
 # TOOLS.md — Calvin 🦞
 
 ## Environment
-- Host: SteelClaw (Ubuntu 24.04 LTS, 192.168.50.55)
+- Host: SteelClaw (Ubuntu 24.04 Desktop VM on Proxmox, 192.168.50.55)
 - Model: google/gemini-flash-2.0 (via OpenRouter)
 - Workspace: ~/steelclaw/workspace-calvin/
 

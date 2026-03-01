@@ -1,8 +1,8 @@
 # TOOLS.md — Elon 🔨
 
 ## Environment
-- Host: SteelClaw (Ubuntu 24.04 LTS, 192.168.50.55)
-- Data Server: Debian (100.117.179.87) — PostgreSQL + pgvector, n8n, Metabase
+- Host: SteelClaw (Ubuntu 24.04 Desktop VM on Proxmox, 192.168.50.55)
+- Data Server: Debian Docker host (100.117.179.87) — all services in containers
 - Model: anthropic/claude-sonnet-4-6 (via OpenRouter)
 - Workspace: ~/steelclaw/workspace-elon/
 
@@ -23,7 +23,7 @@
 - **Frontend:** React + TypeScript + Vite
 - **Backend:** Express.js, OpenClaw API
 - **Database:** PostgreSQL 15 + pgvector (Debian), SQLite (OpenClaw memory)
-- **Services:** systemd --user (SteelClaw), Docker Compose (Debian)
+- **Services:** systemd --user (SteelClaw VM), Docker Compose (Debian host)
 - **CI/CD:** GitHub Actions (future)
 
 ## Your Tools

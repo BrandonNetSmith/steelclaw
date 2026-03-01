@@ -7,16 +7,16 @@ My agent ID: main
 My model: google/gemini-2.5-flash-preview
 
 ## SteelClaw Setup (as of 2026-02-28)
-- OpenClaw gateway running on Ubuntu 24.04.4 LTS at 192.168.50.55
+- OpenClaw gateway running on Ubuntu 24.04 Desktop VM (Proxmox) at 192.168.50.55
 - Tailscale IP: 100.66.7.57
 - Memory/semantic recall: enabled (OpenAI text-embedding-3-small)
 - 7 agents: Tim (main), Elon, Gary, Noah, Warren, Steve, Calvin
 - GitHub: BrandonNetSmith/NetSmithOS (gh CLI authenticated)
 
-## Debian Data Server (192.168.50.183 / Tailscale: 100.117.179.87)
+## Debian Docker Host (192.168.50.183 / Tailscale: 100.117.179.87)
 - PostgreSQL 15 + pgvector (netsmith_memory database, agent_memories table)
 - n8n, Metabase, Odoo, Vaultwarden, Traefik, Cloudflared
-- 31GB RAM, 192GB disk
+- 31GB RAM, 192GB disk — all services run in Docker containers
 
 ## Cron Jobs
 - nightly-business-idea (2am CT)

@@ -1,7 +1,7 @@
 # TOOLS.md — Warren 💰
 
 ## Environment
-- Host: SteelClaw (Ubuntu 24.04 LTS, 192.168.50.55)
+- Host: SteelClaw (Ubuntu 24.04 Desktop VM on Proxmox, 192.168.50.55)
 - Model: anthropic/claude-sonnet-4-6 (via OpenRouter)
 - Workspace: ~/steelclaw/workspace-warren/
 
@@ -21,7 +21,7 @@
 - **Session logs** (`session-logs` skill) — review past revenue decisions and partnership conversations
 
 ### Data Infrastructure (via Elon)
-- **PostgreSQL + pgvector** — NetSmith's data backbone (Debian, 100.117.179.87:5432)
+- **PostgreSQL + pgvector** — NetSmith's Docker-hosted data layer (Debian, 100.117.179.87:5432)
 - **Metabase** — dashboards and analytics (when configured)
 - **n8n** — automation workflows for revenue operations
 - For analytics/reporting needs, spec requirements and route to Elon for implementation

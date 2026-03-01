@@ -1,7 +1,7 @@
 # TOOLS.md — Tim 🧠
 
 ## Environment
-- Host: SteelClaw (Ubuntu 24.04 LTS, 192.168.50.55 / Tailscale: 100.66.7.57)
+- Host: SteelClaw (Ubuntu 24.04 Desktop VM on Proxmox, 192.168.50.55 / Tailscale: 100.66.7.57)
 - Model: google/gemini-2.5-flash-preview (via OpenRouter)
 - Workspace: ~/steelclaw/workspace/
 - OpenClaw Gateway: http://localhost:3000
@@ -29,7 +29,7 @@
 
 ### Infrastructure Awareness
 - **SteelClaw** (192.168.50.55) — AI compute, 7.2GB RAM, OpenClaw gateway
-- **Debian** (192.168.50.183 / Tailscale: 100.117.179.87) — data backbone, 31GB RAM
+- **Debian** (192.168.50.183 / Tailscale: 100.117.179.87) — Docker host, 31GB RAM — runs all services in containers
   - PostgreSQL 15 + pgvector (netsmith_memory database)
   - n8n (workflow automation)
   - Metabase (analytics/dashboards)
