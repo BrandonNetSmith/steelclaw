@@ -1158,6 +1158,119 @@ app.post("/api/forge/preview-soul", async (req, res) => {
 });
 
 
+
+// POST /api/forge/deploy — Deploy a new agent from wizard configuration
+app.post("/api/forge/deploy", async (req, res) => {
+  try {
+    const { agentName, agentId, roleId, archetypeId, traits, companyName, modelTier, channels } = req.body;
+    
+    if (!agentName || !agentId || !roleId) {
+      return res.status(400).json({ error: "Missing required fields: agentName, agentId, roleId" });
+    }
+
+    // Load all data files
+    const [templateData, archetypeData, traitData, roleData] = await Promise.all([
+      readFile(join(__dirname, "src", "server", "data", "templates.json"), "utf-8"),
+      readFile(join(__dirname, "src", "server", "data", "archetypes.json"), "utf-8"),
+      readFile(join(__dirname, "src", "server", "data", "trait-descriptors.json"), "utf-8"),
+      readFile(join(__dirname, "src", "server", "data", "roles.json"), "utf-8"),
+    ]);
+    
+    const templates = JSON.parse(templateData);
+    const archetypes = JSON.parse(archetypeData);
+    const traitDescriptors = JSON.parse(traitData);
+    const roles = JSON.parse(roleData);
+    
+    const role = roles.find(r => r.id === roleId);
+    const archetype = (archetypes[roleId] || []).find(a => a.id === archetypeId);
+    
+    if (!role) {
+      return res.status(400).json({ error: "Invalid role: " + roleId });
+    }
+    
+    // Get trait descriptors
+    function getTraitDesc(traitKey, value) {
+      const trait = traitDescriptors[traitKey];
+      if (!trait) return "";
+      for (const [range, desc] of Object.entries(trait.soulDescriptors)) {
+        const [lo, hi] = range.split("-").map(Number);
+        if (value >= lo && value <= hi) return desc;
+      }
+      return "";
+    }
+
+    const dateStr = new Date().toISOString().split("T")[0];
+
+    // Generate SOUL.md
+    let soul = templates.soul;
+    const soulReplacements = {
+      "{{agentName}}": agentName,
+      "{{roleTitle}}": role.title,
+      "{{roleShortTitle}}": role.shortTitle,
+      "{{companyName}}": companyName || "NetSmith",
+      "{{archetypeQuote}}": archetype ? archetype.description : role.description,
+      "{{archetypeSoulPrompt}}": archetype ? archetype.soulPrompt : "You embody the " + role.title + " with excellence.",
+      "{{communicationDescriptor}}": getTraitDesc("communication", traits?.communication ?? 0.5),
+      "{{riskDescriptor}}": getTraitDesc("riskTolerance", traits?.riskTolerance ?? 0.5),
+      "{{decisionDescriptor}}": getTraitDesc("decisionStyle", traits?.decisionStyle ?? 0.5),
+      "{{responsibilities}}": role.coreResponsibilities.map(r => "- " + r).join("\n"),
+      "{{roleDomain}}": role.shortTitle + " operations",
+      "{{delegationRules}}": "Defined by organizational structure.",
+      "{{generatedDate}}": dateStr,
+    };
+    for (const [key, val] of Object.entries(soulReplacements)) {
+      soul = soul.split(key).join(val);
+    }
+
+    // Generate IDENTITY.md  
+    const modelMap = { performance: "Claude Opus 4", balanced: "Claude Sonnet 4.6", economy: "Gemini 2.5 Flash" };
+    let identity = templates.identity;
+    const identityReplacements = {
+      "{{agentName}}": agentName,
+      "{{roleTitle}}": role.title,
+      "{{roleShortTitle}}": role.shortTitle,
+      "{{agentId}}": agentId,
+      "{{modelName}}": modelMap[modelTier] || modelMap[role.modelTier] || "Claude Sonnet 4.6",
+      "{{reportsTo}}": "CEO (Human)",
+      "{{directReports}}": "—",
+      "{{companyName}}": companyName || "NetSmith",
+      "{{archetypeName}}": archetype ? archetype.name : "Custom",
+      "{{archetypeLabel}}": archetype ? archetype.label : "Custom",
+      "{{channels}}": channels ? Object.entries(channels).filter(([_,v]) => v).map(([k]) => "- " + k).join("\n") || "None configured" : "None configured",
+      "{{dailyTokenLimit}}": "500,000",
+      "{{modelTier}}": modelTier || role.modelTier || "balanced",
+      "{{monthlyBudget}}": "TBD",
+      "{{generatedDate}}": dateStr,
+    };
+    for (const [key, val] of Object.entries(identityReplacements)) {
+      identity = identity.split(key).join(val);
+    }
+
+    // Create workspace directory
+    const workspaceDir = join(HOME, "steelclaw", "workspace-" + agentId);
+    await mkdir(workspaceDir, { recursive: true });
+    await mkdir(join(workspaceDir, "memory"), { recursive: true });
+
+    // Write files
+    await writeFile(join(workspaceDir, "SOUL.md"), soul, "utf-8");
+    await writeFile(join(workspaceDir, "IDENTITY.md"), identity, "utf-8");
+    await writeFile(join(workspaceDir, "MEMORY.md"), "# MEMORY.md\n\nNo memories yet. Start a conversation to build institutional knowledge.\n", "utf-8");
+
+    // Update WORKSPACES runtime map
+    WORKSPACES[agentId] = workspaceDir;
+
+    res.json({
+      success: true,
+      agentId,
+      workspace: workspaceDir,
+      files: ["SOUL.md", "IDENTITY.md", "MEMORY.md"],
+      message: agentName + " has been deployed as " + role.title,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to deploy agent", details: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════════
